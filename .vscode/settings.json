@@ -1,0 +1,16 @@
+{
+  "solidity.defaultCompiler": "remote",
+  "solidity.compileUsingRemoteVersion": "0.8.19",
+  "solidity.packageDefaultDependenciesDirectory": "node_modules",
+  "solidity.packageDefaultDependenciesContractsDirectory": "contracts",
+  "files.associations": {
+    "*.sol": "solidity"
+  },
+  "solidity.linter": "solhint",
+  "solidity.formatter": "forge",
+  "solidity.validationDelay": 1500,
+  "solidity.enabledAsYouTypeCompilationErrorCheck": true,
+  "solidity.telemetry": false,
+  "hardhat.solidityCompile": true,
+  "hardhat.solidityCompileOnSave": true
+} 
