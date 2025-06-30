@@ -1,0 +1,2295 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PiFX Playground</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🔐 PiFX Playground</h1>
+            <p>Create, Sign, and Execute trades with PiFX</p>
+        </div>
+
+        <div class="content">
+            <div class="tabs">
+                <div class="tab active" onclick="showTab('dashboard')">Dashboard</div>
+                <div class="tab" onclick="showTab('execute')">Broadcast Trade</div>
+                <div class="tab" onclick="showTab('provide-funds')">Fund Trade</div>
+                <div class="tab" onclick="showTab('stored-trades')">Get Trades</div>
+                <div class="tab" onclick="showTab('fireblocks')">Fireblocks</div>
+                <div class="tab" onclick="showTab('debug')">Debug Events</div>
+            </div>
+
+            <!-- Dashboard Tab -->
+            <div id="dashboard" class="tab-content active">
+                <div class="section">
+                    <h2>📊 Contract Status</h2>
+                    <div class="grid">
+                        <div>
+                            <h3>Contract Information</h3>
+                            <p><strong>Contract Address:</strong> <span id="contractAddress">Not deployed</span></p>
+                            <p><strong>Network:</strong> <span id="network">Localhost</span></p>
+                            <p><strong>Block Number:</strong> <span id="blockNumber">-</span></p>
+                        </div>
+                        <div>
+                            <h3>Quick Actions</h3>
+                            <button class="btn" onclick="deployContract()">Deploy Contract</button>
+                            <button class="btn btn-secondary" onclick="refreshStatus()">Refresh Status</button>
+                            <button class="btn btn-secondary" onclick="setContractAddress()">Set Contract Address</button>
+                        </div>
+                    </div>
+                    <div id="deployResult" class="result hidden"></div>
+                </div>
+
+                <div class="section">
+                    <h2>👛 Connect MetaMask Wallet</h2>
+                    <div class="alert alert-info">
+                        <strong>MetaMask Integration:</strong> Connect your MetaMask wallet to sign transactions and interact with smart contracts.
+                    </div>
+                    
+                    <div id="walletStatus">
+                        <div class="alert alert-warning">
+                            <strong>MetaMask Not Connected</strong><br>
+                            Click "Connect MetaMask" to connect your wallet.
+                        </div>
+                    </div>
+                    
+                    <div class="button-group">
+                        <button class="btn btn-primary" onclick="connectMetaMask()">Connect MetaMask</button>
+                        <button class="btn btn-secondary" onclick="disconnectMetaMask()">Disconnect</button>
+                    </div>
+                    
+                    <div class="wallet-info margin-top-20">
+                        <h3>📋 Wallet Information</h3>
+                        <div class="form-group">
+                            <label for="ownerPrivateKey">Connected Address:</label>
+                            <input type="text" id="ownerPrivateKey" placeholder="MetaMask address will appear here" readonly>
+                            <small class="form-text">This address will be used for signing transactions</small>
+                        </div>
+                    </div>
+                    
+                    <div id="walletResult" class="result hidden"></div>
+                </div>
+
+                <div class="section">
+                    <h2>📈 Recent Activity</h2>
+                    <div id="recentActivity" class="transaction-list">
+                        <p>No recent activity. Deploy a contract and execute trades to see activity here.</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Broadcast Trade Tab -->
+            <div id="execute" class="tab-content">
+                <div class="section">
+                    <h2>⚡ Record Trade & Swap Tokens</h2>
+                    <div class="alert alert-info">
+                        <strong>Important:</strong> Use the "Sign Trade" button to create a proper EIP-712 signature with MetaMask for the TradeContract. 
+                        Make sure MetaMask is connected and you're on the Hardhat local network.
+                        <strong>ETH Only:</strong> Only ETH trades are supported.
+                    </div>
+
+                    <div class="form-group">
+                        <label for="senderAddress">Sender Address:</label>
+                        <input type="text" id="senderAddress" placeholder="Address of the token sender">
+                    </div>
+                    <div class="form-group">
+                        <label for="receiverAddress">Receiver Address:</label>
+                        <input type="text" id="receiverAddress" placeholder="Enter the receiver's address">
+                        <small class="form-text">Enter the address that will receive the tokens in this trade</small>
+                    </div>
+                    <div class="form-group">
+                        <label for="fromAmount">From Amount:</label>
+                        <input type="number" id="fromAmount" placeholder="Enter trade amount" min="0" step="0.000001">
+                    </div>
+                    <div class="form-group">
+                        <label for="fromCurrency">From Currency:</label>
+                        <select id="fromCurrency" required>
+                            <option value="">Select Currency</option>
+                            <option value="ETH">ETH (Native)</option>
+                        </select>
+                        <small class="form-text">Only ETH is supported for trades</small>
+                    </div>
+                    <div class="form-group">
+                        <label for="toAmount">To Amount:</label>
+                        <input type="number" id="toAmount" placeholder="Enter amount to receive" min="0" step="0.000001">
+                    </div>
+                    <div class="form-group">
+                        <label for="toCurrency">To Currency:</label>
+                        <select id="toCurrency" required>
+                            <option value="">Select Currency</option>
+                            <option value="ETH">ETH (Native)</option>
+                        </select>
+                        <small class="form-text">Only ETH is supported for trades</small>
+                    </div>
+                    <div class="form-group">
+                        <label for="authorizationSignature">Authorization Signature:</label>
+                        <textarea id="authorizationSignature" rows="3" placeholder="Paste the authorization signature"></textarea>
+                    </div>
+                    <button class="btn btn-primary" onclick="signTrade()">Sign Trade</button>
+                    <button class="btn btn-success" onclick="broadcastTrade()">Broadcast Trade</button>
+                    <div id="signResult" class="result hidden"></div>
+                    <div id="broadcastResult" class="result hidden"></div>
+                </div>
+            </div>
+
+            <!-- Provide Funds Tab -->
+            <div id="provide-funds" class="tab-content">
+                <div class="section">
+                    <h2>💰 Fund Trade</h2>
+                    <div class="alert alert-info">
+                        <strong>Fund Trade:</strong> Fund a recorded trade. Both parties must provide their respective amounts before the trade can be executed. 
+                        <strong>ETH Only:</strong> Only ETH transfers are supported. The amount will be sent directly to the smart contract.
+                    </div>
+
+                    <div class="form-group">
+                        <label for="tradeHash">Trade Hash:</label>
+                        <input type="text" id="tradeHash" placeholder="Enter the trade hash (0x...)" required>
+                        <small class="form-text">The hash of the recorded trade you want to fund</small>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="fundAmount">Amount to Fund (in ETH):</label>
+                        <input type="number" id="fundAmount" placeholder="Enter amount to fund" min="0" step="0.000001" required onchange="updateFundingSummary()">
+                        <small class="form-text">The amount you are funding for this trade. Enter the amount in ETH (e.g., 1.5 for 1.5 ETH)</small>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="fundCurrency">Currency:</label>
+                        <select id="fundCurrency" onchange="updateCurrencyInfo()" required>
+                            <option value="">Select Currency</option>
+                            <option value="ETH">ETH (Native)</option>
+                        </select>
+                        <small class="form-text">Only ETH is supported for funding trades</small>
+                    </div>
+
+                    <div id="ethTransferInfo" class="alert alert-warning hidden">
+                        <strong>⚠️ ETH Transfer Notice:</strong>
+                        <ul>
+                            <li>You will be sending <span id="ethAmount">0</span> ETH directly to the smart contract</li>
+                            <li>This transaction will include both the ETH value and gas fees</li>
+                            <li>Make sure you have sufficient ETH balance for both the transfer and gas</li>
+                            <li>The ETH will be held in the smart contract until the trade is executed</li>
+                            <li>Only ETH transfers are supported - no other tokens are accepted</li>
+                        </ul>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="fundsSenderAddress">Your Address:</label>
+                        <input type="text" id="fundsSenderAddress" placeholder="Your MetaMask address will appear here" readonly>
+                        <small class="form-text">This address will be used to fund the trade</small>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="fundsSignature">Funds Authorization Signature:</label>
+                        <textarea id="fundsSignature" rows="3" placeholder="Paste the funds authorization signature"></textarea>
+                    </div>
+
+                    <div class="funding-summary">
+                        <h4>📋 Funding Summary</h4>
+                        <div class="summary-item">
+                            <span class="summary-label">Trade Hash:</span>
+                            <span id="summaryTradeHash" class="summary-value">-</span>
+                        </div>
+                        <div class="summary-item">
+                            <span class="summary-label">Amount:</span>
+                            <span id="summaryAmount" class="summary-value">-</span>
+                        </div>
+                        <div class="summary-item">
+                            <span class="summary-label">Currency:</span>
+                            <span id="summaryCurrency" class="summary-value">-</span>
+                        </div>
+                        <div class="summary-item">
+                            <span class="summary-label">Transaction Type:</span>
+                            <span id="summaryTransactionType" class="summary-value">-</span>
+                        </div>
+                    </div>
+
+                    <button class="btn btn-primary" onclick="signFunds()">Sign Funds</button>
+                    <button class="btn btn-success" onclick="provideFunds()">Fund Trade</button>
+                    <div id="provideFundsResult" class="result hidden"></div>
+                </div>
+            </div>
+
+            <!-- Get Trades Tab -->
+            <div id="stored-trades" class="tab-content">
+                <div class="section">
+                    <h2>📋 Get Stored Trades</h2>
+                    <div class="alert alert-info">
+                        <strong>Trade Explorer:</strong> View all stored trades with filtering and pagination options. You can filter by address, status, or view all trades.
+                    </div>
+
+                    <div class="trade-filters">
+                        <div class="filter-group">
+                            <h3>🔍 Load Trades</h3>
+                            <button class="btn btn-primary" onclick="loadTrades()">Load All Trades</button>
+                            <button class="btn btn-secondary" onclick="clearTrades()">Clear Results</button>
+                        </div>
+                    </div>
+
+                    <div class="trade-stats">
+                        <h3>📊 Trade Statistics</h3>
+                        <div class="stats-grid">
+                            <div class="stat-item">
+                                <span class="stat-label">Total Trades:</span>
+                                <span id="totalTrades" class="stat-value">-</span>
+                            </div>
+                            <div class="stat-item">
+                                <span class="stat-label">Pending:</span>
+                                <span id="pendingTrades" class="stat-value">-</span>
+                            </div>
+                            <div class="stat-item">
+                                <span class="stat-label">Partially Funded:</span>
+                                <span id="partiallyFundedTrades" class="stat-value">-</span>
+                            </div>
+                            <div class="stat-item">
+                                <span class="stat-label">Fully Funded:</span>
+                                <span id="fullyFundedTrades" class="stat-value">-</span>
+                            </div>
+                            <div class="stat-item">
+                                <span class="stat-label">Executed:</span>
+                                <span id="executedTrades" class="stat-value">-</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="pagination-controls">
+                        <button class="btn btn-secondary" onclick="previousPage()" id="prevBtn" disabled>← Previous</button>
+                        <span id="pageInfo">Page 1 of 1</span>
+                        <button class="btn btn-secondary" onclick="nextPage()" id="nextBtn" disabled>Next →</button>
+                    </div>
+
+                    <div class="trades-container">
+                        <h3>📋 Trade Results</h3>
+                        <div id="tradesList" class="trades-list">
+                            <p class="no-trades">No trades loaded. Use the button above to load trades.</p>
+                        </div>
+                    </div>
+
+                    <div id="tradesResult" class="result hidden"></div>
+                </div>
+            </div>
+
+            <!-- Fireblocks Tab -->
+            <div id="fireblocks" class="tab-content">
+                <div class="section">
+                    <h2>🔥 Fireblocks Integration</h2>
+                    <div class="alert alert-info">
+                        <strong>Fireblocks Integration:</strong> Test Fireblocks API functionality including vault account creation and management.
+                    </div>
+
+                    <!-- Fireblocks Status -->
+                    <div class="section">
+                        <h3>🔍 Fireblocks Status</h3>
+                        <div class="fireblocks-status">
+                            <button class="btn btn-primary" onclick="checkFireblocksStatus()">Check Fireblocks Status</button>
+                            <div id="fireblocksStatus" class="status-display">
+                                <p>Click "Check Fireblocks Status" to verify connectivity</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Create Vault Account -->
+                    <div class="section">
+                        <h3>🏦 Create Vault Account</h3>
+                        <div class="alert alert-warning">
+                            <strong>Important:</strong> This will create a new vault account in Fireblocks. Make sure you have the necessary permissions.
+                        </div>
+
+                        <div class="form-group">
+                            <label for="vaultAccountName">Vault Account Name:</label>
+                            <input type="text" id="vaultAccountName" placeholder="Enter vault account name" value="Test Vault Account">
+                            <small class="form-text">A descriptive name for the new vault account</small>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="vaultAccountCustomerRefId">Customer Reference ID:</label>
+                            <input type="text" id="vaultAccountCustomerRefId" placeholder="Enter customer reference ID" value="test-customer-123">
+                            <small class="form-text">A unique identifier for the vault account</small>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="vaultAccountHiddenOnUI">Hidden on UI:</label>
+                            <select id="vaultAccountHiddenOnUI">
+                                <option value="false">No (Visible)</option>
+                                <option value="true">Yes (Hidden)</option>
+                            </select>
+                            <small class="form-text">Whether to hide this vault account in the Fireblocks UI</small>
+                        </div>
+
+                        <button class="btn btn-primary" onclick="createVaultAccount()">Create Vault Account</button>
+                        <div id="createVaultResult" class="result hidden"></div>
+                    </div>
+
+                    <!-- List Vault Accounts -->
+                    <div class="section">
+                        <h3>📋 List Vault Accounts</h3>
+                        <div class="vault-accounts">
+                            <button class="btn btn-primary" onclick="listVaultAccounts()">List Vault Accounts</button>
+                            <button class="btn btn-secondary" onclick="clearVaultAccounts()">Clear Results</button>
+                            <div id="vaultAccountsList" class="vault-accounts-list">
+                                <p>Click "List Vault Accounts" to view available vault accounts</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Debug Events Tab -->
+            <div id="debug" class="tab-content">
+                <div class="section">
+                    <h2>🔍 Debug Events</h2>
+                    <div class="alert alert-info">
+                        <strong>Debug Information:</strong> This tab shows detailed debug events from smart contract executions, including signature verification details.
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="debugContractAddress">Contract Address:</label>
+                        <div class="input-group">
+                            <input type="text" id="debugContractAddress" placeholder="Enter contract address to monitor" required>
+                            <button type="button" onclick="startDebugMonitoring()" class="btn btn-primary">Start Monitoring</button>
+                            <button type="button" onclick="stopDebugMonitoring()" class="btn btn-secondary">Stop Monitoring</button>
+                        </div>
+                        <small class="form-text">Enter a deployed contract address to monitor debug events</small>
+                    </div>
+
+                    <div class="debug-controls">
+                        <button class="btn btn-success" onclick="clearDebugEvents()">Clear Events</button>
+                        <button class="btn btn-info" onclick="exportDebugEvents()">Export Events</button>
+                    </div>
+
+                    <div class="debug-stats">
+                        <h4>📊 Event Statistics</h4>
+                        <div class="stats-grid">
+                            <div class="stat-item">
+                                <span class="stat-label">Total Events:</span>
+                                <span id="totalEvents" class="stat-value">0</span>
+                            </div>
+                            <div class="stat-item">
+                                <span class="stat-label">DebugSigner Events:</span>
+                                <span id="debugSignerEvents" class="stat-value">0</span>
+                            </div>
+                            <div class="stat-item">
+                                <span class="stat-label">DebugSignature Events:</span>
+                                <span id="debugSignatureEvents" class="stat-value">0</span>
+                            </div>
+                            <div class="stat-item">
+                                <span class="stat-label">DebugStructHash Events:</span>
+                                <span id="debugStructHashEvents" class="stat-value">0</span>
+                            </div>
+                            <div class="stat-item">
+                                <span class="stat-label">TradeExecuted Events:</span>
+                                <span id="tradeExecutedEvents" class="stat-value">0</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="debug-events-container">
+                        <h4>📋 Recent Debug Events</h4>
+                        <div id="debugEventsList" class="debug-events-list">
+                            <p class="no-events">No debug events yet. Start monitoring a contract to see events here.</p>
+                        </div>
+                    </div>
+
+                    <div id="debugResult" class="result hidden"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let monitoring = false;
+        let eventInterval;
+        let connectedAccount = null;
+        let isMetaMaskConnected = false;
+        let lastPreparedData = null; // Store the last prepared signature data
+
+        // Native JavaScript functions to replace ethers
+        function parseEther(etherAmount) {
+            // Convert ether to wei (1 ether = 10^18 wei)
+            const weiPerEther = BigInt(10) ** BigInt(18);
+            const etherBigInt = BigInt(Math.floor(parseFloat(etherAmount) * 10**18));
+            return etherBigInt.toString();
+        }
+
+        function formatEther(weiAmount) {
+            // Convert wei to ether
+            const weiPerEther = BigInt(10) ** BigInt(18);
+            const weiBigInt = BigInt(weiAmount);
+            const etherValue = Number(weiBigInt) / Number(weiPerEther);
+            return etherValue.toString();
+        }
+
+        // Helper functions for showing/hiding elements
+        function showElement(elementId) {
+            const element = document.getElementById(elementId);
+            if (element) {
+                element.classList.remove('hidden');
+            }
+        }
+
+        function hideElement(elementId) {
+            const element = document.getElementById(elementId);
+            if (element) {
+                element.classList.add('hidden');
+            }
+        }
+
+        // MetaMask connection functions
+        async function connectMetaMask() {
+            try {
+                // Check if MetaMask is installed
+                if (typeof window.ethereum === 'undefined') {
+                    throw new Error('MetaMask is not installed. Please install MetaMask and try again.');
+                }
+
+                // Request account access
+                const accounts = await window.ethereum.request({ method: 'eth_requestAccounts' });
+                
+                if (accounts.length === 0) {
+                    throw new Error('No accounts found. Please connect your MetaMask wallet.');
+                }
+
+                connectedAccount = accounts[0];
+                isMetaMaskConnected = true;
+
+                // Check network
+                const isCorrectNetwork = await checkNetwork();
+                const networkName = await getNetworkName();
+
+                // Update UI
+                let statusHtml = `
+                    <div class="alert alert-success">
+                        <strong>✅ MetaMask Connected!</strong><br>
+                        Address: ${connectedAccount}<br>
+                        Network: ${networkName}
+                `;
+
+                if (!isCorrectNetwork) {
+                    statusHtml += `
+                        <br><br>
+                        <strong>⚠️ Wrong Network!</strong><br>
+                        Please switch to Hardhat local network for full functionality.<br>
+                        <button class="btn btn-warning" onclick="switchToHardhat()" style="margin-top: 10px;">Switch to Hardhat</button>
+                    `;
+                }
+
+                statusHtml += '</div>';
+                document.getElementById('walletStatus').innerHTML = statusHtml;
+
+                // Auto-fill wallet address in forms
+                document.getElementById('ownerPrivateKey').value = connectedAccount;
+                document.getElementById('senderAddress').value = connectedAccount;
+                document.getElementById('fundsSenderAddress').value = connectedAccount;
+
+                // Add to recent activity
+                addToRecentActivity('MetaMask Connected', connectedAccount, 'success');
+                
+                showNotification('MetaMask connected successfully!', 'success');
+            } catch (error) {
+                console.error('MetaMask connection error:', error);
+                document.getElementById('walletStatus').innerHTML = `
+                    <div class="alert alert-error">
+                        <strong>❌ Connection Failed</strong><br>
+                        ${error.message}
+                    </div>
+                `;
+                addToRecentActivity('MetaMask Connection Failed', error.message, 'error');
+            }
+        }
+
+        async function disconnectMetaMask() {
+            connectedAccount = null;
+            isMetaMaskConnected = false;
+            
+            document.getElementById('walletStatus').innerHTML = `
+                <div class="alert alert-warning">
+                    <strong>MetaMask Disconnected</strong><br>
+                    Click "Connect MetaMask" to reconnect.
+                </div>
+            `;
+
+            // Clear form fields
+            document.getElementById('ownerPrivateKey').value = '';
+            document.getElementById('senderAddress').value = '';
+            document.getElementById('fundsSenderAddress').value = '';
+
+            addToRecentActivity('MetaMask Disconnected', 'User disconnected wallet', 'info');
+            showNotification('MetaMask disconnected', 'info');
+        }
+
+        async function getNetworkName() {
+            try {
+                const chainId = await window.ethereum.request({ method: 'eth_chainId' });
+                const networkNames = {
+                    '0x1': 'Ethereum Mainnet',
+                    '0x3': 'Ropsten Testnet',
+                    '0x4': 'Rinkeby Testnet',
+                    '0x5': 'Goerli Testnet',
+                    '0x2a': 'Kovan Testnet',
+                    '0x7a69': 'Hardhat Local',
+                    '0x539': 'Hardhat Local (Decimal)'
+                };
+                return networkNames[chainId] || `Chain ID: ${parseInt(chainId, 16)}`;
+            } catch (error) {
+                return 'Unknown Network';
+            }
+        }
+
+        // Listen for account changes
+        if (typeof window.ethereum !== 'undefined') {
+            window.ethereum.on('accountsChanged', function (accounts) {
+                if (accounts.length === 0) {
+                    disconnectMetaMask();
+                } else {
+                    connectedAccount = accounts[0];
+                    document.getElementById('ownerPrivateKey').value = connectedAccount;
+                    document.getElementById('senderAddress').value = connectedAccount;
+                    document.getElementById('fundsSenderAddress').value = connectedAccount;
+                    addToRecentActivity('Account Changed', connectedAccount, 'info');
+                }
+            });
+
+            window.ethereum.on('chainChanged', function (chainId) {
+                addToRecentActivity('Network Changed', `Chain ID: ${parseInt(chainId, 16)}`, 'info');
+                showNotification('Network changed. Please reconnect if needed.', 'warning');
+            });
+        }
+
+        function showTab(tabName) {
+            // Hide all tab contents
+            document.querySelectorAll('.tab-content').forEach(content => {
+                content.classList.remove('active');
+            });
+            
+            // Remove active class from all tabs
+            document.querySelectorAll('.tab').forEach(tab => {
+                tab.classList.remove('active');
+            });
+            
+            // Show selected tab content
+            document.getElementById(tabName).classList.add('active');
+            
+            // Add active class to clicked tab
+            event.target.classList.add('active');
+        }
+
+        async function signTrade() {
+            try {
+                const senderAddress = document.getElementById('senderAddress').value;
+                const receiverAddress = document.getElementById('receiverAddress').value;
+                const fromAmount = document.getElementById('fromAmount').value;
+                const fromCurrency = document.getElementById('fromCurrency').value;
+                const toAmount = document.getElementById('toAmount').value;
+                const toCurrency = document.getElementById('toCurrency').value;
+                const contractAddress = document.getElementById('contractAddress').textContent;
+
+                document.getElementById('signResult').innerHTML = `
+                    <h3>Preparing Trade Data...</h3>
+                    <p>Preparing EIP-712 data for MetaMask signing...</p>
+                `;
+                document.getElementById('signResult').className = 'result loading';
+                showElement('signResult');
+
+                const domain = {
+                    name: 'PiFX',
+                    version: '1',
+                    chainId: 31337,
+                    verifyingContract: contractAddress
+                };
+
+                const types = {
+                    Trade: [
+                        { name: 'senderAddress', type: 'address' },
+                        { name: 'receiverAddress', type: 'address' },
+                        { name: 'fromAmount', type: 'uint256' },
+                        { name: 'fromCurrency', type: 'string' },
+                        { name: 'toAmount', type: 'uint256' },
+                        { name: 'toCurrency', type: 'string' }
+                    ]
+                };
+
+                const value = {
+                    senderAddress: senderAddress,
+                    receiverAddress: receiverAddress,
+                    fromAmount: fromAmount,
+                    fromCurrency: fromCurrency,
+                    toAmount: toAmount,
+                    toCurrency: toCurrency
+                };
+
+                // Store for debugging if needed
+                lastPreparedData = { domain, types, value };
+
+                document.getElementById('signResult').innerHTML = `
+                    <h3>Signing Trade with MetaMask...</h3>
+                    <p>Please approve the signature request in MetaMask.</p>
+                `;
+
+                // Sign with MetaMask using the prepared data
+                const signature = await window.ethereum.request({
+                    method: 'eth_signTypedData_v4',
+                    params: [senderAddress, JSON.stringify({
+                        types: types,
+                        primaryType: 'Trade',
+                        domain: domain,
+                        message: value
+                    })]
+                });
+
+                // Store the signature for execution
+                document.getElementById('authorizationSignature').value = signature;
+
+                document.getElementById('signResult').innerHTML = `
+                    <h3>Trade Signed Successfully with MetaMask</h3>
+                    <p><strong>Sender:</strong> ${senderAddress}</p>
+                    <p><strong>Receiver:</strong> ${receiverAddress}</p>
+                    <p><strong>Contract:</strong> ${contractAddress}</p>
+                    <p><strong>Trade:</strong> ${fromAmount} ${fromCurrency} → ${toAmount} ${toCurrency}</p>
+                    <p><strong>Signature:</strong></p>
+                    <pre>${signature}</pre>
+                    <p><strong>Message:</strong> EIP-712 trade signature created successfully with MetaMask</p>
+                `;
+                document.getElementById('signResult').className = 'result success';
+                showElement('signResult');
+                addToRecentActivity('Trade Signed with MetaMask', `${fromAmount} ${fromCurrency} → ${toAmount} ${toCurrency} from ${senderAddress}`, 'success');
+                showNotification('Trade signed successfully with MetaMask! Ready for execution.', 'success');
+            } catch (error) {
+                console.error('Sign trade error:', error);
+                document.getElementById('signResult').innerHTML = `
+                    <h3>Signing Error</h3>
+                    <p><strong>Error Type:</strong> ${error.name || 'Unknown'}</p>
+                    <p><strong>Error Message:</strong> ${error.message}</p>
+                    <p><strong>Stack Trace:</strong></p>
+                    <pre>${error.stack || 'No stack trace available'}</pre>
+                    <p><strong>Troubleshooting:</strong></p>
+                    <ul>
+                        <li>Ensure MetaMask is connected</li>
+                        <li>Check if you approved the signature request</li>
+                        <li>Verify you're on the correct network (Hardhat Local)</li>
+                        <li>Make sure all required fields are filled</li>
+                        <li>Ensure the contract address is valid and deployed</li>
+                        <li>Verify amounts are positive numbers</li>
+                        <li>Verify currencies are not empty</li>
+                    </ul>
+                `;
+                document.getElementById('signResult').className = 'result error';
+                showElement('signResult');
+                addToRecentActivity('Signing Error', error.message, 'error');
+            }
+        }
+
+        async function broadcastTrade() {
+            try {
+                const senderAddress = document.getElementById('senderAddress').value;
+                const receiverAddress = document.getElementById('receiverAddress').value;
+                const fromAmount = document.getElementById('fromAmount').value;
+                const fromCurrency = document.getElementById('fromCurrency').value;
+                const toAmount = document.getElementById('toAmount').value;
+                const toCurrency = document.getElementById('toCurrency').value;
+                const signature = document.getElementById('authorizationSignature').value;
+                const contractAddress = document.getElementById('contractAddress').textContent; // Get from Dashboard tab
+
+
+                document.getElementById('broadcastResult').innerHTML = `
+                    <h3>Recording Trade...</h3>
+                    <p>Please wait while the trade is being recorded on the blockchain...</p>
+                `;
+                document.getElementById('broadcastResult').className = 'result';
+                showElement('broadcastResult');
+
+                const response = await fetch('/ethereum/prepare-record-transaction', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        senderAddress: senderAddress,
+                        receiverAddress: receiverAddress,
+                        fromAmount: parseFloat(fromAmount),
+                        fromCurrency,
+                        toAmount: parseFloat(toAmount),
+                        toCurrency,
+                        signature,
+                        contractAddress
+                    })
+                });
+
+                const result = await response.json();
+                const data = result.transactionData;
+
+                const transactionParameters = {
+                    to: contractAddress,
+                    from: senderAddress,
+                    data: data,
+                    value: '0x0'  // No ETH sent - just recording the trade. MetaMask requires value to be provided.
+                };
+
+                try {                    
+                    const txHash = await window.ethereum.request({
+                        method: 'eth_sendTransaction',
+                        params: [transactionParameters],
+                    });
+
+                    // Broadcast the complete trade object
+                    const tradeObject = {
+                        fromAmount: parseFloat(fromAmount),
+                        toAmount: parseFloat(toAmount),
+                        fromCurrency: fromCurrency,
+                        toCurrency: toCurrency,
+                        senderAddress: senderAddress,
+                        receiverAddress: receiverAddress,
+                        transactionHash: txHash,
+                        timestamp: new Date().toISOString(),
+                        status: 'recorded'
+                    };
+
+                    // Add to recent activity with the complete trade details
+                    addToRecentActivity('Trade Recorded', `${fromAmount} ${fromCurrency} to ${toAmount} ${toCurrency} trade recorded: ${txHash}`, 'success');
+
+                    document.getElementById('broadcastResult').innerHTML = `
+                        <h3>Trade Recorded Successfully</h3>
+                        <p><strong>Transaction Hash:</strong> ${txHash}</p>
+                        <p><strong>Trade Details:</strong> ${fromAmount} ${fromCurrency} from ${senderAddress} to ${toAmount} ${toCurrency} for ${receiverAddress}</p>
+                        <p><strong>Broadcasted Trade Object:</strong></p>
+                        <pre>${JSON.stringify(tradeObject, null, 2)}</pre>
+                        <p><strong>Message:</strong> Trade recorded successfully and trade object broadcasted</p>
+                        <p><strong>Next Steps:</strong> Both parties need to fund the trade using the fund trade function. The trade will execute automatically once both parties have funded.</p>
+                    `;
+                    document.getElementById('broadcastResult').className = 'result success';
+                    showElement('broadcastResult');
+
+                } catch (error) {
+                    console.error('Transaction error details:', error);
+                    throw new Error(`Transaction failed: ${error.message || error.code || 'Unknown error'}`);
+                }
+
+            } catch (error) {
+                console.error('Record trade error:', error);
+                document.getElementById('broadcastResult').innerHTML = `
+                    <h3>Record Trade Error</h3>
+                    <p><strong>Error Type:</strong> ${error.name || 'Unknown'}</p>
+                    <p><strong>Error Message:</strong> ${error.message}</p>
+                    <p><strong>Stack Trace:</strong></p>
+                    <pre>${error.stack || 'No stack trace available'}</pre>
+                `;
+                document.getElementById('broadcastResult').className = 'result error';
+                showElement('broadcastResult');
+                addToRecentActivity('Record Trade Error', error.message, 'error');
+            }
+        }
+
+        async function deployContract() {
+            try {
+                // Show loading state
+                document.getElementById('deployResult').innerHTML = `
+                    <h3>Deploying Contract...</h3>
+                    <p>Please wait while the contract is being deployed...</p>
+                `;
+                document.getElementById('deployResult').className = 'result loading';
+                showElement('deployResult');
+
+                const response = await fetch('/ethereum/deploy-contract', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({})
+                });
+
+                const result = await response.json();
+
+                if (!response.ok) {
+                    throw new Error(`Backend error: ${result.error || 'Unknown error'}`);
+                }
+
+                // Update the contract address in the Dashboard
+                document.getElementById('contractAddress').textContent = result.contractAddress;
+                
+                // Save to localStorage for persistence
+                localStorage.setItem('deployedContractAddress', result.contractAddress);
+                
+                // Populate the contract address fields in other tabs (only if they exist)
+                const debugContractAddress = document.getElementById('debugContractAddress');
+                if (debugContractAddress) {
+                    debugContractAddress.value = result.contractAddress;
+                }
+                
+                document.getElementById('deployResult').innerHTML = `
+                    <h3>Contract Deployed Successfully</h3>
+                    <p><strong>Contract Address:</strong> ${result.contractAddress}</p>
+                    <p><strong>Deployer:</strong> ${result.deployer}</p>
+                    <p><strong>Transaction Hash:</strong> ${result.transactionHash}</p>
+                    <p><strong>Message:</strong> ${result.message}</p>
+                `;
+                document.getElementById('deployResult').className = 'result success';
+                showElement('deployResult');
+                
+                // Add to recent activity
+                addToRecentActivity('Contract Deployed', result.contractAddress, 'success');
+                
+                // Show success message
+                showNotification('Contract deployed successfully! Address: ' + result.contractAddress, 'success');
+            } catch (error) {
+                console.error('Deploy contract error:', error);
+                
+                document.getElementById('deployResult').innerHTML = `
+                    <h3>Deployment Error</h3>
+                    <p><strong>Error Type:</strong> ${error.name || 'Unknown'}</p>
+                    <p><strong>Error Message:</strong> ${error.message}</p>
+                    <p><strong>Stack Trace:</strong></p>
+                    <pre>${error.stack || 'No stack trace available'}</pre>
+                    <p><strong>Troubleshooting:</strong></p>
+                    <ul>
+                        <li>Ensure Hardhat node is running on localhost:8545</li>
+                        <li>Check if contract is compiled (run "npx hardhat compile")</li>
+                        <li>Verify network connection</li>
+                    </ul>
+                `;
+                document.getElementById('deployResult').className = 'result error';
+                showElement('deployResult');
+                
+                // Add to recent activity
+                addToRecentActivity('Deployment Error', error.message, 'error');
+            }
+        }
+
+        function addToRecentActivity(action, details, status) {
+            const activityDiv = document.getElementById('recentActivity');
+            const timestamp = new Date().toLocaleTimeString();
+            
+            const activityItem = document.createElement('div');
+            activityItem.className = 'event-card';
+            activityItem.innerHTML = `
+                <h4>
+                    <span class="status-indicator status-${status}"></span>
+                    ${action}
+                </h4>
+                <p><strong>Time:</strong> ${timestamp}</p>
+                <p><strong>Details:</strong> ${details}</p>
+            `;
+            
+            activityDiv.insertBefore(activityItem, activityDiv.firstChild);
+            
+            // Keep only last 10 activities
+            const items = activityDiv.querySelectorAll('.event-card');
+            if (items.length > 10) {
+                items[items.length - 1].remove();
+            }
+        }
+
+        function loadEvents() {
+            // This would typically call your backend to get events
+            // For now, we'll show a placeholder
+            document.getElementById('tradeEvents').innerHTML = `
+                <div class="event-card">
+                    <h4>TradeExecuted Event</h4>
+                    <p><strong>From:</strong> 0x133817672f0088Ab02A7fd584Af31f8934977e30</p>
+                    <p><strong>To:</strong> 0x0000000000000000000000000000000000000000</p>
+                    <p><strong>Executor:</strong> 0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266</p>
+                </div>
+            `;
+            
+            document.getElementById('nonceEvents').innerHTML = `
+                <div class="event-card">
+                    <h4>No Nonce Events</h4>
+                    <p>Nonce tracking has been removed from this contract.</p>
+                </div>
+            `;
+        }
+
+        function clearEvents() {
+            document.getElementById('tradeEvents').innerHTML = '<p>No TradeExecuted events found.</p>';
+            document.getElementById('nonceEvents').innerHTML = '<p>No events found.</p>';
+        }
+
+        function startMonitoring() {
+            monitoring = true;
+            addToRecentActivity('Monitoring Started', 'Live monitoring active', 'success');
+            
+            // Simulate monitoring updates
+            eventInterval = setInterval(() => {
+                if (monitoring) {
+                    addToRecentActivity('Event: TradeExecuted', 'New event detected', 'success');
+                }
+            }, 5000);
+        }
+
+        function stopMonitoring() {
+            monitoring = false;
+            if (eventInterval) {
+                clearInterval(eventInterval);
+            }
+            addToRecentActivity('Monitoring Stopped', 'Live monitoring disabled', 'error');
+        }
+
+        function refreshStatus() {
+            // This would typically call your backend to get current status
+            document.getElementById('blockNumber').textContent = Math.floor(Math.random() * 1000);
+            addToRecentActivity('Status Refreshed', 'Dashboard updated', 'success');
+        }
+
+        function setContractAddress() {
+            const currentAddress = document.getElementById('contractAddress').textContent;
+            const newAddress = prompt('Enter the contract address:', currentAddress);
+            
+            if (newAddress && newAddress.trim() !== '') {
+                const address = newAddress.trim();
+                
+                // Basic validation
+                if (!address.startsWith('0x') || address.length !== 42) {
+                    showNotification('Invalid contract address format. Must be a 42-character hex string starting with 0x.', 'error');
+                    return;
+                }
+                
+                // Update the contract address
+                document.getElementById('contractAddress').textContent = address;
+                document.getElementById('debugContractAddress').value = address;
+                
+                // Save to localStorage
+                localStorage.setItem('deployedContractAddress', address);
+                
+                showNotification('Contract address updated successfully!', 'success');
+                addToRecentActivity('Contract Address Set', address, 'info');
+            }
+        }
+
+        function showNotification(message, type = 'info') {
+            // Create notification element
+            const notification = document.createElement('div');
+            notification.className = `notification ${type}`;
+            notification.textContent = message;
+            
+            // Add to page
+            document.body.appendChild(notification);
+            
+            // Remove after 5 seconds
+            setTimeout(() => {
+                notification.style.animation = 'slideOut 0.3s ease-in';
+                setTimeout(() => {
+                    if (notification.parentNode) {
+                        notification.parentNode.removeChild(notification);
+                    }
+                }, 300);
+            }, 5000);
+        }
+
+        // Initialize dashboard
+        document.addEventListener('DOMContentLoaded', function() {
+            // Get saved contract address or use default
+            const savedAddress = localStorage.getItem('deployedContractAddress');
+            const defaultAddress = savedAddress || '0x5FbDB2315678afecb367f032d93F642f64180aa3';
+            
+            document.getElementById('contractAddress').textContent = defaultAddress;
+            document.getElementById('debugContractAddress').value = defaultAddress;
+            
+            console.log('Initialized with contract address:', defaultAddress);
+        });
+
+        async function checkNetwork() {
+            try {
+                const chainId = await window.ethereum.request({ method: 'eth_chainId' });
+                const hardhatChainIds = ['0x7a69', '0x539']; // Hardhat local network IDs
+                
+                if (!hardhatChainIds.includes(chainId)) {
+                    showNotification('Please switch to Hardhat local network (Chain ID: 31337)', 'warning');
+                    return false;
+                }
+                return true;
+            } catch (error) {
+                console.error('Network check error:', error);
+                return false;
+            }
+        }
+
+        async function switchToHardhat() {
+            try {
+                await window.ethereum.request({
+                    method: 'wallet_switchEthereumChain',
+                    params: [{ chainId: '0x7a69' }], // Hardhat local network
+                });
+                showNotification('Switched to Hardhat local network', 'success');
+            } catch (switchError) {
+                // This error code indicates that the chain has not been added to MetaMask
+                if (switchError.code === 4902) {
+                    try {
+                        await window.ethereum.request({
+                            method: 'wallet_addEthereumChain',
+                            params: [{
+                                chainId: '0x7a69',
+                                chainName: 'Hardhat Local',
+                                nativeCurrency: {
+                                    name: 'ETH',
+                                    symbol: 'ETH',
+                                    decimals: 18
+                                },
+                                rpcUrls: ['http://127.0.0.1:8545'],
+                                blockExplorerUrls: []
+                            }]
+                        });
+                        showNotification('Added Hardhat local network to MetaMask', 'success');
+                    } catch (addError) {
+                        showNotification('Failed to add Hardhat network: ' + addError.message, 'error');
+                    }
+                } else {
+                    showNotification('Failed to switch network: ' + switchError.message, 'error');
+                }
+            }
+        }
+
+        // Debug Events Functions
+        let debugMonitoring = false;
+        let debugEventInterval;
+        let debugEvents = [];
+        let eventStats = {
+            total: 0,
+            debugSigner: 0,
+            debugSignature: 0,
+            debugStructHash: 0,
+            tradeExecuted: 0
+        };
+
+        async function startDebugMonitoring() {
+            const contractAddress = document.getElementById('debugContractAddress').value;
+            if (!contractAddress) {
+                showNotification('Please enter a contract address', 'error');
+                return;
+            }
+
+            debugMonitoring = true;
+            document.getElementById('debugResult').innerHTML = `
+                <h3>🔍 Debug Monitoring Started</h3>
+                <p><strong>Contract Address:</strong> ${contractAddress}</p>
+                <p><strong>Status:</strong> Monitoring for debug events...</p>
+            `;
+            document.getElementById('debugResult').className = 'result success';
+            showElement('debugResult');
+
+            // Start polling for events
+            debugEventInterval = setInterval(async () => {
+                if (debugMonitoring) {
+                    await pollDebugEvents(contractAddress);
+                }
+            }, 2000); // Poll every 2 seconds
+
+            addToRecentActivity('Debug Monitoring Started', contractAddress, 'success');
+        }
+
+        function stopDebugMonitoring() {
+            debugMonitoring = false;
+            if (debugEventInterval) {
+                clearInterval(debugEventInterval);
+            }
+            
+            document.getElementById('debugResult').innerHTML = `
+                <h3>⏹️ Debug Monitoring Stopped</h3>
+                <p><strong>Status:</strong> Monitoring disabled</p>
+            `;
+            document.getElementById('debugResult').className = 'result';
+            showElement('debugResult');
+
+            addToRecentActivity('Debug Monitoring Stopped', 'Monitoring disabled', 'info');
+        }
+
+        async function pollDebugEvents(contractAddress) {
+            try {
+                // This would typically call your backend to get events
+                // For now, we'll simulate some debug events
+                const mockEvents = generateMockDebugEvents(contractAddress);
+                
+                for (const event of mockEvents) {
+                    addDebugEvent(event);
+                }
+            } catch (error) {
+                console.error('Error polling debug events:', error);
+            }
+        }
+
+        function generateMockDebugEvents(contractAddress) {
+            const events = [];
+            const now = new Date();
+            
+            // Simulate DebugSigner event
+            if (Math.random() > 0.7) {
+                events.push({
+                    type: 'DebugSigner',
+                    timestamp: now.toISOString(),
+                    data: {
+                        recovered: '0x70997970C51812dc3A010C7d01b50e0d17dc79C8',
+                        expected: '0x70997970C51812dc3A010C7d01b50e0d17dc79C8',
+                        match: true
+                    }
+                });
+            }
+
+            // Simulate DebugSignature event
+            if (Math.random() > 0.8) {
+                events.push({
+                    type: 'DebugSignature',
+                    timestamp: now.toISOString(),
+                    data: {
+                        from: '0x70997970C51812dc3A010C7d01b50e0d17dc79C8',
+                        to: contractAddress || '0x5fc8d32690cc91d4c39d9d3abcbd16989f875707',
+                        fromAmount: '100',
+                        fromCurrency: 'ETH',
+                        signature: '0x' + Math.random().toString(16).substr(2, 130),
+                        recoveredSigner: '0x70997970C51812dc3A010C7d01b50e0d17dc79C8'
+                    }
+                });
+            }
+
+            // Simulate DebugStructHash event
+            if (Math.random() > 0.75) {
+                events.push({
+                    type: 'DebugStructHash',
+                    timestamp: now.toISOString(),
+                    data: {
+                        from: '0x70997970C51812dc3A010C7d01b50e0d17dc79C8',
+                        to: contractAddress || '0x5fc8d32690cc91d4c39d9d3abcbd16989f875707',
+                        fromAmount: '100',
+                        fromCurrency: 'ETH',
+                        structHash: '0x' + Math.random().toString(16).substr(2, 64),
+                        finalHash: '0x' + Math.random().toString(16).substr(2, 64)
+                    }
+                });
+            }
+
+            // Simulate TradeExecuted event
+            if (Math.random() > 0.9) {
+                events.push({
+                    type: 'TradeExecuted',
+                    timestamp: now.toISOString(),
+                    data: {
+                        from: '0x70997970C51812dc3A010C7d01b50e0d17dc79C8',
+                        to: contractAddress || '0x5fc8d32690cc91d4c39d9d3abcbd16989f875707',
+                        fromAmount: '100',
+                        fromCurrency: 'ETH',
+                        executor: '0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266'
+                    }
+                });
+            }
+
+            return events;
+        }
+
+        function addDebugEvent(event) {
+            debugEvents.unshift(event); // Add to beginning
+            eventStats.total++;
+            
+            // Update specific event count
+            if (event.type === 'DebugSigner') {
+                eventStats.debugSigner++;
+            } else if (event.type === 'DebugSignature') {
+                eventStats.debugSignature++;
+            } else if (event.type === 'DebugStructHash') {
+                eventStats.debugStructHash++;
+            } else if (event.type === 'TradeExecuted') {
+                eventStats.tradeExecuted++;
+            }
+
+            // Update stats display
+            updateDebugStats();
+            
+            // Update events list
+            updateDebugEventsList();
+            
+            // Keep only last 50 events
+            if (debugEvents.length > 50) {
+                debugEvents = debugEvents.slice(0, 50);
+            }
+        }
+
+        function updateDebugStats() {
+            document.getElementById('totalEvents').textContent = eventStats.total;
+            document.getElementById('debugSignerEvents').textContent = eventStats.debugSigner;
+            document.getElementById('debugSignatureEvents').textContent = eventStats.debugSignature;
+            document.getElementById('debugStructHashEvents').textContent = eventStats.debugStructHash;
+            document.getElementById('tradeExecutedEvents').textContent = eventStats.tradeExecuted;
+        }
+
+        function updateDebugEventsList() {
+            const eventsList = document.getElementById('debugEventsList');
+            
+            if (debugEvents.length === 0) {
+                eventsList.innerHTML = '<p class="no-events">No debug events yet. Start monitoring a contract to see events here.</p>';
+                return;
+            }
+
+            eventsList.innerHTML = debugEvents.map(event => {
+                const timestamp = new Date(event.timestamp).toLocaleString();
+                let eventHtml = `
+                    <div class="debug-event">
+                        <div class="debug-event-header">
+                            <span class="event-type ${getEventTypeClass(event.type)}">${event.type}</span>
+                            <span class="event-timestamp">${timestamp}</span>
+                        </div>
+                `;
+
+                if (event.type === 'DebugSigner') {
+                    const matchClass = event.data.match ? 'success' : 'error';
+                    const matchText = event.data.match ? '✅ MATCH' : '❌ MISMATCH';
+                    eventHtml += `
+                        <div class="event-data">
+                            <strong>Recovered Signer:</strong> ${event.data.recovered}
+                            <br><strong>Expected Signer:</strong> ${event.data.expected}
+                            <br><span class="signature-match ${matchClass}">${matchText}</span>
+                        </div>
+                    `;
+                } else if (event.type === 'DebugSignature') {
+                    eventHtml += `
+                        <div class="event-data">
+                            <strong>From:</strong> ${event.data.from}
+                            <br><strong>To:</strong> ${event.data.to}
+                            <br><strong>Amount:</strong> ${event.data.fromAmount} ${event.data.fromCurrency}
+                            <br><strong>Signature:</strong> ${event.data.signature}
+                            <br><strong>Recovered Signer:</strong> ${event.data.recoveredSigner}
+                        </div>
+                    `;
+                } else if (event.type === 'DebugStructHash') {
+                    eventHtml += `
+                        <div class="event-data">
+                            <strong>From:</strong> ${event.data.from}
+                            <br><strong>To:</strong> ${event.data.to}
+                            <br><strong>Amount:</strong> ${event.data.fromAmount} ${event.data.fromCurrency}
+                            <br><strong>Struct Hash:</strong> ${event.data.structHash}
+                            <br><strong>Final Hash:</strong> ${event.data.finalHash}
+                        </div>
+                    `;
+                } else if (event.type === 'TradeExecuted') {
+                    eventHtml += `
+                        <div class="event-data">
+                            <strong>From:</strong> ${event.data.from}
+                            <br><strong>To:</strong> ${event.data.to}
+                            <br><strong>Amount:</strong> ${event.data.fromAmount} ${event.data.fromCurrency}
+                            <br><strong>Executor:</strong> ${event.data.executor}
+                        </div>
+                    `;
+                }
+
+                eventHtml += '</div>';
+                return eventHtml;
+            }).join('');
+        }
+
+        function getEventTypeClass(eventType) {
+            switch (eventType) {
+                case 'DebugSigner':
+                    return 'debug-signer';
+                case 'DebugSignature':
+                    return 'debug-signature';
+                case 'DebugStructHash':
+                    return 'debug-struct-hash';
+                case 'TradeExecuted':
+                    return 'trade-executed';
+                default:
+                    return '';
+            }
+        }
+
+        function clearDebugEvents() {
+            debugEvents = [];
+            eventStats = {
+                total: 0,
+                debugSigner: 0,
+                debugSignature: 0,
+                debugStructHash: 0,
+                tradeExecuted: 0
+            };
+            updateDebugStats();
+            updateDebugEventsList();
+            addToRecentActivity('Debug Events Cleared', 'All events removed', 'info');
+        }
+
+        function exportDebugEvents() {
+            const dataStr = JSON.stringify(debugEvents, null, 2);
+            const dataBlob = new Blob([dataStr], { type: 'application/json' });
+            const url = URL.createObjectURL(dataBlob);
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = `debug-events-${new Date().toISOString().split('T')[0]}.json`;
+            link.click();
+            URL.revokeObjectURL(url);
+            addToRecentActivity('Debug Events Exported', 'Events saved to file', 'success');
+        }
+
+        // Fund Trade Functions
+        async function signFunds() {
+            try {
+                const contractAddress = document.getElementById('contractAddress').textContent; // Get from Dashboard tab
+                const tradeHash = document.getElementById('tradeHash').value;
+                const amount = document.getElementById('fundAmount').value;
+                const currency = document.getElementById('fundCurrency').value;
+                const senderAddress = document.getElementById('fundsSenderAddress').value;
+
+                // Show loading state
+                document.getElementById('provideFundsResult').innerHTML = `
+                    <h3>Preparing Funds Data...</h3>
+                    <p>Preparing EIP-712 data for MetaMask signing...</p>
+                `;
+                document.getElementById('provideFundsResult').className = 'result loading';
+                showElement('provideFundsResult');
+
+                // Construct EIP-712 data locally
+                const domain = {
+                    name: 'PiFX',
+                    version: '1',
+                    chainId: 31337,
+                    verifyingContract: contractAddress
+                };
+
+                const types = {
+                    FundTransfer: [
+                        { name: 'tradeHash', type: 'bytes32' },
+                        { name: 'amount', type: 'uint256' },
+                        { name: 'currency', type: 'string' },
+                    ]
+                };
+
+                const value = {
+                    tradeHash: tradeHash,
+                    amount: amount.toString(),
+                    currency: currency,
+                };
+
+                document.getElementById('provideFundsResult').innerHTML = `
+                    <h3>Signing Funds with MetaMask...</h3>
+                    <p>Please approve the signature request in MetaMask.</p>
+                `;
+
+                const signature = await window.ethereum.request({
+                    method: 'eth_signTypedData_v4',
+                    params: [senderAddress, JSON.stringify({
+                        types: types,
+                        primaryType: 'FundTransfer',
+                        domain: domain,
+                        message: value
+                    })]
+                });
+
+                document.getElementById('fundsSignature').value = signature;
+
+                document.getElementById('provideFundsResult').innerHTML = `
+                    <h3>Funds Signed Successfully with MetaMask</h3>
+                    <p><strong>Trade Hash:</strong> ${tradeHash}</p>
+                    <p><strong>Amount:</strong> ${amount} ${currency === 'ETH' ? 'wei' : currency}</p>
+                    <p><strong>Your Address:</strong> ${senderAddress}</p>
+                    <p><strong>Contract Address:</strong> ${contractAddress}</p>
+                    <p><strong>Signature:</strong></p>
+                    <pre>${signature}</pre>
+                    <p><strong>Message:</strong> EIP-712 funds signature created successfully with MetaMask</p>
+                `;
+                document.getElementById('provideFundsResult').className = 'result success';
+                showElement('provideFundsResult');
+                addToRecentActivity('Funds Signed with MetaMask', `${amount} ${currency} for trade ${tradeHash}`, 'success');
+                showNotification('Funds signed successfully with MetaMask! Ready for provision.', 'success');
+            } catch (error) {
+                console.error('Sign funds error:', error);
+                document.getElementById('provideFundsResult').innerHTML = `
+                    <h3>Fund Trade Error</h3>
+                    <p><strong>Error Type:</strong> ${error.name || 'Unknown'}</p>
+                    <p><strong>Error Message:</strong> ${error.message}</p>
+                    <p><strong>Stack Trace:</strong></p>
+                    <pre>${error.stack || 'No stack trace available'}</pre>
+                `;
+                document.getElementById('provideFundsResult').className = 'result error';
+                showElement('provideFundsResult');
+                addToRecentActivity('Fund Trade Error', error.message, 'error');
+            }
+        }
+
+        async function provideFunds() {
+            try {
+                const contractAddress = document.getElementById('contractAddress').textContent; // Get from Dashboard tab
+                const tradeHash = document.getElementById('tradeHash').value;
+                const amount = document.getElementById('fundAmount').value;
+                const currency = document.getElementById('fundCurrency').value;
+                const signature = document.getElementById('fundsSignature').value;
+                const senderAddress = document.getElementById('fundsSenderAddress').value;
+
+                // Show loading state
+                document.getElementById('provideFundsResult').innerHTML = `
+                    <h3>Providing Funds...</h3>
+                    <p>Please wait while the transaction is being processed...</p>
+                `;
+                document.getElementById('provideFundsResult').className = 'result loading';
+                showElement('provideFundsResult');
+
+                const response = await fetch('/ethereum/prepare-provide-funds', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        tradeHash,
+                        amount,
+                        currency,
+                        contractAddress
+                    })
+                });
+
+                const result = await response.json();
+                const data = result.transactionData;
+                const value = result.value;
+
+                // Format value for MetaMask (convert to hex if it's a number)
+                let formattedValue = '0x0';
+                if (value) {
+                    if (typeof value === 'number' || !isNaN(value)) {
+                        // Convert number to hex
+                        formattedValue = '0x' + BigInt(value).toString(16);
+                    } else if (value.startsWith('0x')) {
+                        // Already in hex format
+                        formattedValue = value;
+                    } else {
+                        throw new Error('Invalid value format received from backend');
+                    }
+                }
+
+                const transactionParameters = {
+                    to: contractAddress,
+                    from: senderAddress,
+                    data: data,
+                    value: formattedValue
+                };
+
+                try {
+                    const txHash = await window.ethereum.request({
+                        method: 'eth_sendTransaction',
+                        params: [transactionParameters],
+                    });
+
+                    document.getElementById('provideFundsResult').innerHTML = `
+                        <h3>Funds Provided Successfully</h3>
+                        <p><strong>Transaction Hash:</strong> ${txHash}</p>
+                        <p><strong>Trade Hash:</strong> ${tradeHash}</p>
+                        <p><strong>Amount Provided:</strong> ${amount} ETH</p>
+                        <p><strong>Your Address:</strong> ${senderAddress}</p>
+                        <p><strong>Contract Address:</strong> ${contractAddress}</p>
+                        <p><strong>Message:</strong> Trade funded successfully to the smart contract</p>
+                        <p><strong>Next Step:</strong> Wait for the other party to fund their portion. The trade will execute automatically once both parties have funded.</p>
+                    `;
+                    document.getElementById('provideFundsResult').className = 'result success';
+                    showElement('provideFundsResult');
+                    addToRecentActivity('Trade Funded', `${amount} ${currency} funded for trade ${tradeHash}: ${txHash}`, 'success');
+                    showNotification('Trade funded successfully!', 'success');
+
+                } catch (txError) {
+                    console.error('Transaction error details:', txError);
+                    
+                    // Provide specific guidance for common errors
+                    let errorMessage = `Transaction failed: ${txError.message || txError.code || 'Unknown error'}`;
+                    
+                    if (txError.message && txError.message.includes('Internal JSON-RPC error')) {
+                        errorMessage = `Transaction failed: Internal JSON-RPC error. This usually means:
+                        <ul>
+                            <li>The trade doesn't exist - please record the trade first using the "Broadcast Trade" tab</li>
+                            <li>Incorrect amount - make sure you're funding the exact amount specified in the trade</li>
+                            <li>Insufficient balance - ensure you have enough ${currency} to fund the trade</li>
+                            <li>Network issues - check if Hardhat node is running on localhost:8545</li>
+                        </ul>
+                        <strong>Technical details:</strong> ${txError.message}`;
+                    }
+                    
+                    throw new Error(errorMessage);
+                }
+
+            } catch (error) {
+                console.error('Provide funds error:', error);
+                document.getElementById('provideFundsResult').innerHTML = `
+                    <h3>Fund Trade Error</h3>
+                    <p><strong>Error Type:</strong> ${error.name || 'Unknown'}</p>
+                    <p><strong>Error Message:</strong> ${error.message}</p>
+                    <p><strong>Stack Trace:</strong></p>
+                    <pre>${error.stack || 'No stack trace available'}</pre>
+                `;
+                document.getElementById('provideFundsResult').className = 'result error';
+                showElement('provideFundsResult');
+                addToRecentActivity('Fund Trade Error', error.message, 'error');
+            }
+        }
+
+        // Update currency info and show ETH transfer warnings
+        function updateCurrencyInfo() {
+            const currency = document.getElementById('fundCurrency').value;
+            const ethTransferInfo = document.getElementById('ethTransferInfo');
+            const amount = document.getElementById('fundAmount').value;
+            
+            // Only ETH is supported, so always show the warning
+            if (currency === 'ETH') {
+                ethTransferInfo.classList.remove('hidden');
+                if (amount) {
+                    document.getElementById('ethAmount').textContent = `${amount} ETH`;
+                }
+            } else {
+                ethTransferInfo.classList.add('hidden');
+            }
+            
+            updateFundingSummary();
+        }
+
+        // Update funding summary
+        function updateFundingSummary() {
+            const tradeHash = document.getElementById('tradeHash').value;
+            const amount = document.getElementById('fundAmount').value;
+            const currency = document.getElementById('fundCurrency').value;
+            
+            document.getElementById('summaryTradeHash').textContent = tradeHash || '-';
+            
+            if (amount) {
+                document.getElementById('summaryAmount').textContent = `${amount} ETH`;
+                document.getElementById('summaryTransactionType').textContent = 'ETH Transfer (with value)';
+                document.getElementById('summaryTransactionType').style.color = '#dc3545';
+                document.getElementById('summaryTransactionType').style.fontWeight = 'bold';
+            } else {
+                document.getElementById('summaryAmount').textContent = '-';
+                document.getElementById('summaryTransactionType').textContent = 'ETH Transfer (with value)';
+                document.getElementById('summaryTransactionType').style.color = '#dc3545';
+                document.getElementById('summaryTransactionType').style.fontWeight = 'normal';
+            }
+            
+            document.getElementById('summaryCurrency').textContent = currency || '-';
+            
+            // Update ETH amount in warning if currency is ETH
+            if (currency === 'ETH' && amount) {
+                document.getElementById('ethAmount').textContent = `${amount} ETH`;
+            }
+        }
+
+        // Event listener for broadcasted trade events
+        document.addEventListener('tradeExecuted', function(event) {
+            const tradeData = event.detail;
+            console.log('Trade event received:', tradeData);
+            
+            // You can add additional handling here, such as:
+            // - Sending to a WebSocket server
+            // - Updating a real-time dashboard
+            // - Storing in local storage
+            // - Broadcasting to other components
+            
+            // Example: Store in localStorage for persistence
+            const storedTrades = JSON.parse(localStorage.getItem('executedTrades') || '[]');
+            storedTrades.push(tradeData);
+            localStorage.setItem('executedTrades', JSON.stringify(storedTrades));
+            
+            // Example: Send to a hypothetical WebSocket server
+            // if (window.tradeWebSocket && window.tradeWebSocket.readyState === WebSocket.OPEN) {
+            //     window.tradeWebSocket.send(JSON.stringify(tradeData));
+            // }
+            
+            showNotification(`Trade broadcasted: ${tradeData.fromAmount} ${tradeData.fromCurrency} → ${tradeData.toAmount} ${tradeData.toCurrency}`, 'success');
+        });
+
+        // Get Trades Functions
+        let currentTrades = [];
+        let currentPage = 0;
+        let currentTotalCount = 0;
+        let currentLimit = 10;
+        let currentFilterType = 'all';
+        let currentFilterValue = '';
+
+        function updateFilterOptions() {
+            const filterType = document.getElementById('filterType').value;
+            const addressFilter = document.getElementById('addressFilter');
+            const statusFilter = document.getElementById('statusFilter');
+            const hashFilter = document.getElementById('hashFilter');
+
+            // Hide all filter options
+            addressFilter.classList.add('hidden');
+            statusFilter.classList.add('hidden');
+            hashFilter.classList.add('hidden');
+
+            // Show relevant filter option
+            if (filterType === 'address') {
+                addressFilter.classList.remove('hidden');
+            } else if (filterType === 'status') {
+                statusFilter.classList.remove('hidden');
+            } else if (filterType === 'hash') {
+                hashFilter.classList.remove('hidden');
+            }
+        }
+
+        function autoFillAddress() {
+            const filterAddress = document.getElementById('filterAddress');
+            if (connectedAccount && filterAddress.value === '') {
+                filterAddress.value = connectedAccount;
+            }
+        }
+
+        async function loadTrades() {
+            try {
+                const contractAddress = document.getElementById('contractAddress').textContent;
+
+                // Show loading state
+                document.getElementById('tradesResult').innerHTML = `
+                    <h3>Loading Trades...</h3>
+                    <p>Please wait while fetching trade data...</p>
+                `;
+                document.getElementById('tradesResult').className = 'result loading';
+                showElement('tradesResult');
+
+                const url = `/ethereum/get-trades?contractAddress=${contractAddress}`;
+                console.log('Fetching trades from URL:', url);
+                
+                const response = await fetch(url);
+                const result = await response.json();
+
+                if (!response.ok) {
+                    throw new Error(`Backend error: ${result.error || 'Unknown error'}`);
+                }
+
+                // Handle response
+                currentTrades = result.trades || [];
+
+                // Update UI
+                displayTrades();
+                updateTradeStats();
+                hideElement('tradesResult');
+
+                addToRecentActivity('Trades Loaded', `${currentTrades.length} trades loaded`, 'success');
+                showNotification(`Loaded ${currentTrades.length} trades`, 'success');
+
+            } catch (error) {
+                console.error('Load trades error:', error);
+                document.getElementById('tradesResult').innerHTML = `
+                    <h3>Load Trades Error</h3>
+                    <p><strong>Error:</strong> ${error.message}</p>
+                `;
+                document.getElementById('tradesResult').className = 'result error';
+                showElement('tradesResult');
+                addToRecentActivity('Load Trades Error', error.message, 'error');
+            }
+        }
+
+        function displayTrades() {
+            const tradesList = document.getElementById('tradesList');
+            
+            if (currentTrades.length === 0) {
+                tradesList.innerHTML = '<p class="no-trades">No trades found with the current filter.</p>';
+                return;
+            }
+
+            tradesList.innerHTML = currentTrades.map(trade => {
+                const timestamp = new Date(parseInt(trade.timestamp) * 1000).toLocaleString();
+                const statusClass = getStatusClass(trade.status);
+                const userRole = trade.userRole ? ` (${trade.userRole})` : '';
+                
+                return `
+                    <div class="trade-card">
+                        <div class="trade-header">
+                            <div class="trade-hash-section">
+                                <span class="trade-hash-label">Trade Hash:</span>
+                                <span class="trade-hash" title="Click to copy" onclick="copyToClipboard('${trade.tradeHash}')">${trade.tradeHash}</span>
+                                <button class="copy-btn" onclick="copyToClipboard('${trade.tradeHash}')" title="Copy trade hash">
+                                    📋
+                                </button>
+                            </div>
+                            <span class="trade-status ${statusClass}">${trade.status.toUpperCase()}</span>
+                        </div>
+                        <div class="trade-details">
+                            <div class="trade-party">
+                                <strong>From:</strong> ${trade.senderAddress}${userRole}
+                                <br><strong>Amount:</strong> ${trade.fromAmount} ${trade.fromCurrency}
+                            </div>
+                            <div class="trade-arrow">→</div>
+                            <div class="trade-party">
+                                <strong>To:</strong> ${trade.receiverAddress}
+                                <br><strong>Amount:</strong> ${trade.toAmount} ${trade.toCurrency}
+                            </div>
+                        </div>
+                        <div class="trade-meta">
+                            <span><strong>Timestamp:</strong> ${timestamp}</span>
+                            <span><strong>From Funded:</strong> ${trade.fromFunded ? 'Yes' : 'No'}</span>
+                            <span><strong>To Funded:</strong> ${trade.toFunded ? 'Yes' : 'No'}</span>
+                            <span><strong>Executed:</strong> ${trade.executed ? 'Yes' : 'No'}</span>
+                        </div>
+                        ${trade.fromFundedAmount > 0 || trade.toFundedAmount > 0 ? `
+                        <div class="trade-funding">
+                            <span><strong>From Funded Amount:</strong> ${trade.fromFundedAmount} ${trade.fromCurrency}</span>
+                            <span><strong>To Funded Amount:</strong> ${trade.toFundedAmount} ${trade.toCurrency}</span>
+                        </div>
+                        ` : ''}
+                        <div class="trade-actions">
+                            <button class="btn btn-small" onclick="copyTradeHash('${trade.tradeHash}')" title="Copy trade hash">
+                                📋 Copy Hash
+                            </button>
+                            <button class="btn btn-small btn-secondary" onclick="viewTradeDetails('${trade.tradeHash}')" title="View detailed trade information">
+                                🔍 Details
+                            </button>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        function getStatusClass(status) {
+            switch (status) {
+                case 'pending': return 'status-pending';
+                case 'partially_funded': return 'status-partial';
+                case 'fully_funded': return 'status-funded';
+                case 'executed': return 'status-executed';
+                default: return 'status-unknown';
+            }
+        }
+
+        function updatePagination() {
+            const totalPages = Math.ceil(currentTotalCount / currentLimit);
+            const currentPageNum = currentPage + 1;
+            
+            document.getElementById('pageInfo').textContent = `Page ${currentPageNum} of ${totalPages}`;
+            document.getElementById('prevBtn').disabled = currentPage === 0;
+            document.getElementById('nextBtn').disabled = currentPageNum >= totalPages;
+        }
+
+        async function updateTradeStats() {
+            try {
+                const contractAddress = document.getElementById('contractAddress').textContent;
+                
+                if (contractAddress === 'Not deployed') {
+                    return;
+                }
+
+                // Get total count
+                const countResponse = await fetch(`/ethereum/trade-count?contractAddress=${contractAddress}`);
+                const countResult = await countResponse.json();
+                
+                if (countResponse.ok) {
+                    document.getElementById('totalTrades').textContent = countResult.count;
+                }
+
+                // Get counts by status (this would need additional backend endpoints for efficiency)
+                // For now, we'll calculate from current trades
+                let pending = 0, partiallyFunded = 0, fullyFunded = 0, executed = 0;
+                
+                currentTrades.forEach(trade => {
+                    if (trade.executed) {
+                        executed++;
+                    } else if (trade.fromFunded && trade.toFunded) {
+                        fullyFunded++;
+                    } else if (trade.fromFunded || trade.toFunded) {
+                        partiallyFunded++;
+                    } else {
+                        pending++;
+                    }
+                });
+
+                document.getElementById('pendingTrades').textContent = pending;
+                document.getElementById('partiallyFundedTrades').textContent = partiallyFunded;
+                document.getElementById('fullyFundedTrades').textContent = fullyFunded;
+                document.getElementById('executedTrades').textContent = executed;
+
+            } catch (error) {
+                console.error('Update trade stats error:', error);
+            }
+        }
+
+        function previousPage() {
+            if (currentPage > 0) {
+                currentPage--;
+                loadTrades();
+            }
+        }
+
+        function nextPage() {
+            const totalPages = Math.ceil(currentTotalCount / currentLimit);
+            if (currentPage + 1 < totalPages) {
+                currentPage++;
+                loadTrades();
+            }
+        }
+
+        function clearTrades() {
+            currentTrades = [];
+            
+            document.getElementById('tradesList').innerHTML = '<p class="no-trades">No trades loaded. Use the button above to load trades.</p>';
+            
+            // Reset stats
+            document.getElementById('totalTrades').textContent = '-';
+            document.getElementById('pendingTrades').textContent = '-';
+            document.getElementById('partiallyFundedTrades').textContent = '-';
+            document.getElementById('fullyFundedTrades').textContent = '-';
+            document.getElementById('executedTrades').textContent = '-';
+            
+            hideElement('tradesResult');
+            addToRecentActivity('Trades Cleared', 'Trade results cleared', 'info');
+        }
+
+        // Copy to clipboard functionality
+        async function copyToClipboard(text) {
+            try {
+                await navigator.clipboard.writeText(text);
+                showCopyFeedback('Trade hash copied to clipboard!');
+                addToRecentActivity('Trade Hash Copied', text.substring(0, 20) + '...', 'success');
+            } catch (err) {
+                // Fallback for older browsers
+                const textArea = document.createElement('textarea');
+                textArea.value = text;
+                document.body.appendChild(textArea);
+                textArea.select();
+                document.execCommand('copy');
+                document.body.removeChild(textArea);
+                showCopyFeedback('Trade hash copied to clipboard!');
+                addToRecentActivity('Trade Hash Copied', text.substring(0, 20) + '...', 'success');
+            }
+        }
+
+        function copyTradeHash(tradeHash) {
+            copyToClipboard(tradeHash);
+        }
+
+        function showCopyFeedback(message) {
+            // Remove existing feedback
+            const existingFeedback = document.querySelector('.copy-feedback');
+            if (existingFeedback) {
+                existingFeedback.remove();
+            }
+
+            // Create new feedback
+            const feedback = document.createElement('div');
+            feedback.className = 'copy-feedback';
+            feedback.textContent = message;
+            document.body.appendChild(feedback);
+
+            // Remove after 3 seconds
+            setTimeout(() => {
+                feedback.style.animation = 'slideOut 0.3s ease-in';
+                setTimeout(() => {
+                    if (feedback.parentNode) {
+                        feedback.parentNode.removeChild(feedback);
+                    }
+                }, 300);
+            }, 3000);
+        }
+
+        // Trade details modal functionality
+        function viewTradeDetails(tradeHash) {
+            // Find the trade data
+            const trade = currentTrades.find(t => t.tradeHash === tradeHash);
+            if (!trade) {
+                showNotification('Trade not found', 'error');
+                return;
+            }
+
+            // Create modal
+            const modal = document.createElement('div');
+            modal.className = 'trade-details-modal';
+            modal.style.display = 'block';
+
+            const timestamp = new Date(parseInt(trade.timestamp) * 1000).toLocaleString();
+            const userRole = trade.userRole ? ` (${trade.userRole})` : '';
+
+            modal.innerHTML = `
+                <div class="trade-details-content">
+                    <div class="trade-details-header">
+                        <h3>Trade Details</h3>
+                        <button class="trade-details-close" onclick="closeTradeDetails()">&times;</button>
+                    </div>
+                    
+                    <div class="trade-details-grid">
+                        <div class="trade-details-item">
+                            <strong>Trade Hash</strong>
+                            <div class="value">${trade.tradeHash}</div>
+                        </div>
+                        <div class="trade-details-item">
+                            <strong>Status</strong>
+                            <div class="value">${trade.status.toUpperCase()}</div>
+                        </div>
+                        <div class="trade-details-item">
+                            <strong>Sender Address${userRole}</strong>
+                            <div class="value">${trade.senderAddress}</div>
+                        </div>
+                        <div class="trade-details-item">
+                            <strong>Receiver Address</strong>
+                            <div class="value">${trade.receiverAddress}</div>
+                        </div>
+                        <div class="trade-details-item">
+                            <strong>From Amount</strong>
+                            <div class="value">${trade.fromAmount} ${trade.fromCurrency}</div>
+                        </div>
+                        <div class="trade-details-item">
+                            <strong>To Amount</strong>
+                            <div class="value">${trade.toAmount} ${trade.toCurrency}</div>
+                        </div>
+                        <div class="trade-details-item">
+                            <strong>Timestamp</strong>
+                            <div class="value">${timestamp}</div>
+                        </div>
+                        <div class="trade-details-item">
+                            <strong>Executed</strong>
+                            <div class="value">${trade.executed ? 'Yes' : 'No'}</div>
+                        </div>
+                    </div>
+                    
+                    <div class="trade-details-grid">
+                        <div class="trade-details-item">
+                            <strong>From Funded</strong>
+                            <div class="value">${trade.fromFunded ? 'Yes' : 'No'}</div>
+                        </div>
+                        <div class="trade-details-item">
+                            <strong>To Funded</strong>
+                            <div class="value">${trade.toFunded ? 'Yes' : 'No'}</div>
+                        </div>
+                        <div class="trade-details-item">
+                            <strong>From Funded Amount</strong>
+                            <div class="value">${trade.fromFundedAmount} ${trade.fromCurrency}</div>
+                        </div>
+                        <div class="trade-details-item">
+                            <strong>To Funded Amount</strong>
+                            <div class="value">${trade.toFundedAmount} ${trade.toCurrency}</div>
+                        </div>
+                    </div>
+                    
+                    <div style="text-align: center; margin-top: 20px;">
+                        <button class="btn btn-primary" onclick="copyToClipboard('${trade.tradeHash}')">
+                            📋 Copy Trade Hash
+                        </button>
+                        <button class="btn btn-secondary" onclick="closeTradeDetails()" style="margin-left: 10px;">
+                            Close
+                        </button>
+                    </div>
+                </div>
+            `;
+
+            document.body.appendChild(modal);
+
+            // Close modal when clicking outside
+            modal.addEventListener('click', function(e) {
+                if (e.target === modal) {
+                    closeTradeDetails();
+                }
+            });
+
+            // Close modal with Escape key
+            document.addEventListener('keydown', function(e) {
+                if (e.key === 'Escape') {
+                    closeTradeDetails();
+                }
+            });
+        }
+
+        function closeTradeDetails() {
+            const modal = document.querySelector('.trade-details-modal');
+            if (modal) {
+                modal.remove();
+            }
+        }
+
+        // Paste trade hash from clipboard
+        async function pasteTradeHash() {
+            try {
+                const text = await navigator.clipboard.readText();
+                const filterHash = document.getElementById('filterHash');
+                
+                // Validate if it looks like a trade hash
+                if (text.startsWith('0x') && text.length === 66) {
+                    filterHash.value = text;
+                    showNotification('Trade hash pasted from clipboard', 'success');
+                } else {
+                    showNotification('Clipboard content does not appear to be a valid trade hash', 'warning');
+                }
+            } catch (err) {
+                showNotification('Failed to read from clipboard. Please paste manually.', 'error');
+            }
+        }
+
+        // Debug trade function
+        async function debugTrade() {
+            try {
+                const contractAddress = document.getElementById('contractAddress').textContent;
+                const tradeHash = document.getElementById('tradeHash').value;
+
+                if (!tradeHash || tradeHash.trim() === '') {
+                    showNotification('Please enter a trade hash first', 'error');
+                    return;
+                }
+
+                if (contractAddress === 'Not deployed') {
+                    showNotification('Please deploy a contract first', 'error');
+                    return;
+                }
+
+                // Show loading state
+                document.getElementById('provideFundsResult').innerHTML = `
+                    <h3>Getting Debug Information...</h3>
+                    <p>Please wait while fetching trade debug data...</p>
+                `;
+                document.getElementById('provideFundsResult').className = 'result loading';
+                showElement('provideFundsResult');
+
+                const response = await fetch(`/ethereum/debug-trade?tradeHash=${tradeHash}&contractAddress=${contractAddress}`);
+                const result = await response.json();
+
+                if (!response.ok) {
+                    throw new Error(`Backend error: ${result.error || 'Unknown error'}`);
+                }
+
+                const debugInfo = result.debugInfo;
+
+                document.getElementById('provideFundsResult').innerHTML = `
+                    <h3>🔍 Trade Debug Information</h3>
+                    <div class="debug-info">
+                        <div class="debug-section">
+                            <h4>📋 Basic Information</h4>
+                            <p><strong>Trade Hash:</strong> ${debugInfo.tradeHash}</p>
+                            <p><strong>Exists:</strong> ${debugInfo.exists ? '✅ Yes' : '❌ No'}</p>
+                            <p><strong>Status:</strong> <span class="status-${debugInfo.status}">${debugInfo.status.toUpperCase()}</span></p>
+                        </div>
+                        
+                        <div class="debug-section">
+                            <h4>👥 Parties</h4>
+                            <p><strong>Sender Address:</strong> ${debugInfo.senderAddress}</p>
+                            <p><strong>Receiver Address:</strong> ${debugInfo.receiverAddress}</p>
+                        </div>
+                        
+                        <div class="debug-section">
+                            <h4>💰 Trade Details</h4>
+                            <p><strong>From Amount:</strong> ${debugInfo.fromAmount} ${debugInfo.fromCurrency}</p>
+                            <p><strong>To Amount:</strong> ${debugInfo.toAmount} ${debugInfo.toCurrency}</p>
+                            <p><strong>Timestamp:</strong> ${new Date(parseInt(debugInfo.timestamp) * 1000).toLocaleString()}</p>
+                        </div>
+                        
+                        <div class="debug-section">
+                            <h4>🏦 Funding Status</h4>
+                            <p><strong>From Funded:</strong> ${debugInfo.fromFunded ? '✅ Yes' : '❌ No'}</p>
+                            <p><strong>To Funded:</strong> ${debugInfo.toFunded ? '✅ Yes' : '❌ No'}</p>
+                            <p><strong>From Funded Amount:</strong> ${debugInfo.fromFundedAmount} ${debugInfo.fromCurrency}</p>
+                            <p><strong>To Funded Amount:</strong> ${debugInfo.toFundedAmount} ${debugInfo.toCurrency}</p>
+                        </div>
+                        
+                        <div class="debug-section">
+                            <h4>⚡ Execution Status</h4>
+                            <p><strong>Executed:</strong> ${debugInfo.executed ? '✅ Yes' : '❌ No'}</p>
+                        </div>
+                    </div>
+                `;
+                document.getElementById('provideFundsResult').className = 'result success';
+                showElement('provideFundsResult');
+                addToRecentActivity('Trade Debug Info Retrieved', `Debug info for trade ${tradeHash.substring(0, 20)}...`, 'info');
+
+            } catch (error) {
+                console.error('Debug trade error:', error);
+                document.getElementById('provideFundsResult').innerHTML = `
+                    <h3>Debug Trade Error</h3>
+                    <p><strong>Error:</strong> ${error.message}</p>
+                `;
+                document.getElementById('provideFundsResult').className = 'result error';
+                showElement('provideFundsResult');
+                addToRecentActivity('Debug Trade Error', error.message, 'error');
+            }
+        }
+
+        // Fireblocks Functions
+        async function checkFireblocksStatus() {
+            try {
+                document.getElementById('fireblocksStatus').innerHTML = `
+                    <div class="alert alert-info">
+                        <strong>Checking Fireblocks Status...</strong>
+                        <p>Please wait while we verify connectivity...</p>
+                    </div>
+                `;
+
+                const response = await fetch('/fireblocks/status', {
+                    method: 'GET',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    }
+                });
+
+                const result = await response.json();
+
+                if (!response.ok) {
+                    throw new Error(`Backend error: ${result.error || 'Unknown error'}`);
+                }
+
+                document.getElementById('fireblocksStatus').innerHTML = `
+                    <div class="alert alert-success">
+                        <strong>✅ Fireblocks Connected!</strong>
+                        <p><strong>Status:</strong> ${result.status}</p>
+                        <p><strong>Message:</strong> ${result.message}</p>
+                        ${result.details ? `<p><strong>Details:</strong> ${result.details}</p>` : ''}
+                    </div>
+                `;
+
+                addToRecentActivity('Fireblocks Status Checked', 'Fireblocks API is accessible', 'success');
+                showNotification('Fireblocks status checked successfully!', 'success');
+
+            } catch (error) {
+                console.error('Fireblocks status check error:', error);
+                document.getElementById('fireblocksStatus').innerHTML = `
+                    <div class="alert alert-error">
+                        <strong>❌ Fireblocks Status Check Failed</strong>
+                        <p><strong>Error:</strong> ${error.message}</p>
+                        <p><strong>Troubleshooting:</strong></p>
+                        <ul>
+                            <li>Check if Fireblocks API key is configured</li>
+                            <li>Verify the secret key file exists</li>
+                            <li>Ensure Fireblocks API is accessible</li>
+                            <li>Check network connectivity</li>
+                        </ul>
+                    </div>
+                `;
+                addToRecentActivity('Fireblocks Status Check Failed', error.message, 'error');
+            }
+        }
+
+        async function createVaultAccount() {
+            try {
+                const name = document.getElementById('vaultAccountName').value;
+                const customerRefId = document.getElementById('vaultAccountCustomerRefId').value;
+                const hiddenOnUI = document.getElementById('vaultAccountHiddenOnUI').value === 'true';
+
+                if (!name || !customerRefId) {
+                    showNotification('Please fill in all required fields', 'error');
+                    return;
+                }
+
+                // Show loading state
+                document.getElementById('createVaultResult').innerHTML = `
+                    <h3>Creating Vault Account...</h3>
+                    <p>Please wait while the vault account is being created in Fireblocks...</p>
+                `;
+                document.getElementById('createVaultResult').className = 'result loading';
+                showElement('createVaultResult');
+
+                const response = await fetch('/fireblocks/create-vault', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        name: name,
+                        customerRefId: customerRefId,
+                        hiddenOnUI: hiddenOnUI
+                    })
+                });
+
+                const result = await response.json();
+
+                if (!response.ok) {
+                    throw new Error(`Backend error: ${result.error || 'Unknown error'}`);
+                }
+
+                document.getElementById('createVaultResult').innerHTML = `
+                    <h3>✅ Vault Account Created Successfully</h3>
+                    <div class="vault-account-details">
+                        <p><strong>Vault Account ID:</strong> ${result.vaultAccountId}</p>
+                        <p><strong>Name:</strong> ${result.name}</p>
+                        <p><strong>Customer Reference ID:</strong> ${result.customerRefId}</p>
+                        <p><strong>Hidden on UI:</strong> ${result.hiddenOnUI ? 'Yes' : 'No'}</p>
+                        <p><strong>Status:</strong> ${result.status}</p>
+                        <p><strong>Message:</strong> ${result.message}</p>
+                    </div>
+                    <p><strong>Next Steps:</strong> The vault account is now available for use in Fireblocks.</p>
+                `;
+                document.getElementById('createVaultResult').className = 'result success';
+                showElement('createVaultResult');
+
+                addToRecentActivity('Vault Account Created', `Created vault account: ${name} (ID: ${result.vaultAccountId})`, 'success');
+                showNotification('Vault account created successfully!', 'success');
+
+            } catch (error) {
+                console.error('Create vault account error:', error);
+                document.getElementById('createVaultResult').innerHTML = `
+                    <h3>❌ Vault Account Creation Failed</h3>
+                    <p><strong>Error:</strong> ${error.message}</p>
+                    <p><strong>Troubleshooting:</strong></p>
+                    <ul>
+                        <li>Check if Fireblocks API is accessible</li>
+                        <li>Verify you have the necessary permissions</li>
+                        <li>Ensure the customer reference ID is unique</li>
+                        <li>Check if the vault account name is valid</li>
+                    </ul>
+                `;
+                document.getElementById('createVaultResult').className = 'result error';
+                showElement('createVaultResult');
+                addToRecentActivity('Vault Account Creation Failed', error.message, 'error');
+            }
+        }
+
+        async function listVaultAccounts() {
+            try {
+                const vaultAccountsList = document.getElementById('vaultAccountsList');
+                
+                vaultAccountsList.innerHTML = `
+                    <div class="alert alert-info">
+                        <strong>Loading Vault Accounts...</strong>
+                        <p>Please wait while fetching vault accounts from Fireblocks...</p>
+                    </div>
+                `;
+
+                const response = await fetch('/fireblocks/vault-accounts', {
+                    method: 'GET',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    }
+                });
+
+                const result = await response.json();
+
+                if (!response.ok) {
+                    throw new Error(`Backend error: ${result.error || 'Unknown error'}`);
+                }
+
+                const vaultAccounts = result.vaultAccounts || [];
+
+                if (vaultAccounts.length === 0) {
+                    vaultAccountsList.innerHTML = `
+                        <div class="alert alert-info">
+                            <strong>No Vault Accounts Found</strong>
+                            <p>No vault accounts are currently available. Create a new vault account using the form above.</p>
+                        </div>
+                    `;
+                } else {
+                    vaultAccountsList.innerHTML = `
+                        <h4>📋 Available Vault Accounts (${vaultAccounts.length})</h4>
+                        <div class="vault-accounts-grid">
+                            ${vaultAccounts.map(account => `
+                                <div class="vault-account-card">
+                                    <div class="vault-account-header">
+                                        <h5>${account.name || 'Unnamed Account'}</h5>
+                                        <span class="vault-account-id">ID: ${account.id}</span>
+                                    </div>
+                                    <div class="vault-account-details">
+                                        <p><strong>Customer Ref ID:</strong> ${account.customerRefId || 'N/A'}</p>
+                                        <p><strong>Hidden on UI:</strong> ${account.hiddenOnUI ? 'Yes' : 'No'}</p>
+                                        <p><strong>Status:</strong> <span class="status-${account.status}">${account.status}</span></p>
+                                        ${account.assets ? `<p><strong>Assets:</strong> ${account.assets.length} asset(s)</p>` : ''}
+                                    </div>
+                                </div>
+                            `).join('')}
+                        </div>
+                    `;
+                }
+
+                addToRecentActivity('Vault Accounts Listed', `${vaultAccounts.length} vault accounts retrieved`, 'success');
+                showNotification(`Retrieved ${vaultAccounts.length} vault accounts`, 'success');
+
+            } catch (error) {
+                console.error('List vault accounts error:', error);
+                document.getElementById('vaultAccountsList').innerHTML = `
+                    <div class="alert alert-error">
+                        <strong>❌ Failed to List Vault Accounts</strong>
+                        <p><strong>Error:</strong> ${error.message}</p>
+                        <p><strong>Troubleshooting:</strong></p>
+                        <ul>
+                            <li>Check if Fireblocks API is accessible</li>
+                            <li>Verify you have the necessary permissions</li>
+                            <li>Ensure Fireblocks service is running</li>
+                        </ul>
+                    </div>
+                `;
+                addToRecentActivity('List Vault Accounts Failed', error.message, 'error');
+            }
+        }
+
+        function clearVaultAccounts() {
+            document.getElementById('vaultAccountsList').innerHTML = `
+                <p>Click "List Vault Accounts" to view available vault accounts</p>
+            `;
+            addToRecentActivity('Vault Accounts Cleared', 'Vault accounts list cleared', 'info');
+        }
+    </script>
+</body>
+</html>
