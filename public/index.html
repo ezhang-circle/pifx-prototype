@@ -109,7 +109,7 @@
                         <label for="fromCurrency">From Currency:</label>
                         <select id="fromCurrency" required>
                             <option value="">Select Currency</option>
-                            <option value="ETH">ETH (Native)</option>
+                            <option value="ETH" selected>ETH (Native)</option>
                         </select>
                         <small class="form-text">Only ETH is supported for trades</small>
                     </div>
@@ -121,7 +121,7 @@
                         <label for="toCurrency">To Currency:</label>
                         <select id="toCurrency" required>
                             <option value="">Select Currency</option>
-                            <option value="ETH">ETH (Native)</option>
+                            <option value="ETH" selected>ETH (Native)</option>
                         </select>
                         <small class="form-text">Only ETH is supported for trades</small>
                     </div>
@@ -609,6 +609,12 @@
                         { name: 'fromCurrency', type: 'string' },
                         { name: 'toAmount', type: 'uint256' },
                         { name: 'toCurrency', type: 'string' }
+                    ],
+                    EIP712Domain: [
+                        { name: 'name', type: 'string' },
+                        { name: 'version', type: 'string' },
+                        { name: 'chainId', type: 'uint256' },
+                        { name: 'verifyingContract', type: 'address' }
                     ]
                 };
 

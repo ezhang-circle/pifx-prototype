@@ -7,20 +7,16 @@ import "@openzeppelin/contracts/utils/cryptography/EIP712.sol";
 contract TradeContract is EIP712 {
     using ECDSA for bytes32;
 
-    // EIP-712 type hash for the Trade struct
     bytes32 public constant TRADE_TYPEHASH = keccak256(
         "Trade(address senderAddress,address receiverAddress,uint256 fromAmount,string fromCurrency,uint256 toAmount,string toCurrency)"
     );
 
-    // EIP-712 type hash for the FundTransfer struct
     bytes32 public constant FUNDS_TYPEHASH = keccak256(
         "FundTransfer(bytes32 tradeHash,uint256 amount,string currency)"
     );
 
-    // Domain separator
     bytes32 public DOMAIN_SEPARATOR;
 
-    // Trade storage structure
     struct StoredTrade {
         address senderAddress;
         address receiverAddress;
@@ -36,11 +32,9 @@ contract TradeContract is EIP712 {
         uint256 toFundedAmount;
     }
 
-    // Storage for trades
     mapping(bytes32 => StoredTrade) public storedTrades;
     bytes32[] public tradeHashes;
     
-    // Events
     event TradeRecorded(
         bytes32 indexed tradeHash,
         address indexed senderAddress,
@@ -82,9 +76,6 @@ contract TradeContract is EIP712 {
         );
     }
 
-    /**
-     * @dev Hash the Trade struct for EIP-712
-     */
     function hashFXTrade(
         address senderAddress,
         address receiverAddress,
@@ -152,7 +143,7 @@ contract TradeContract is EIP712 {
         }
 
         address recovered = ecrecover(digest, v, r, s);
-        // require(recovered == senderAddress, "Trade must be signed by sender");
+        require(recovered == senderAddress, "Trade must be signed by sender");
 
         // Create a unique trade hash
         bytes32 tradeHash = keccak256(
