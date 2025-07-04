@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>PiFX Playground</title>
     <link rel="stylesheet" href="styles.css">
+    <script src="config.js"></script>
 </head>
 <body>
     <div class="container">
@@ -26,6 +27,16 @@
             <!-- Dashboard Tab -->
             <div id="dashboard" class="tab-content active">
                 <div class="section">
+                    <h2>🔍 Wallet Provider</h2>
+                    <div class="form-group">
+                        <label for="walletProviderSelect">Wallet Provider:</label>
+                        <select id="walletProviderSelect" onchange="switchWalletProvider()">
+                        <option value="metamask">MetaMask</option>
+                        <option value="circle">Circle Programmable Wallet</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="section">
                     <h2>📊 Contract Status</h2>
                     <div class="grid">
                         <div>
@@ -43,30 +54,35 @@
                     </div>
                     <div id="deployResult" class="result hidden"></div>
                 </div>
-
                 <div class="section">
-                    <h2>👛 Connect MetaMask Wallet</h2>
-                    <div class="alert alert-info">
+                    <h2>👛 Connect Wallet</h2>
+                  
+                    <div id="walletInfoMetaMask" class="alert alert-info">
                         <strong>MetaMask Integration:</strong> Connect your MetaMask wallet to sign transactions and interact with smart contracts.
                     </div>
+
+                    <div id="walletInfoCircle" class="alert alert-info hidden">
+                        <strong>Circle Programmable Wallet Integration:</strong> Circle doesn't require users to connect to their wallet.
+                     </div>
                     
                     <div id="walletStatus">
                         <div class="alert alert-warning">
-                            <strong>MetaMask Not Connected</strong><br>
-                            Click "Connect MetaMask" to connect your wallet.
+                            <strong>No Wallet Connected</strong><br>
+                            Select a wallet provider and click "Connect" to begin.
                         </div>
                     </div>
                     
                     <div class="button-group">
-                        <button class="btn btn-primary" onclick="connectMetaMask()">Connect MetaMask</button>
-                        <button class="btn btn-secondary" onclick="disconnectMetaMask()">Disconnect</button>
+                        <button class="btn btn-primary" id="connectMetaMaskBtn" onclick="connectMetaMask()">Connect MetaMask</button>
+                        <button class="btn btn-primary hidden" id="connectCircleBtn" onclick="connectCirclePW()">Connect Circle Wallet</button>
+                        <button id="disconnectBtn" class="btn btn-secondary" onclick="disconnectMetaMask()">Disconnect</button>
                     </div>
                     
                     <div class="wallet-info margin-top-20">
                         <h3>📋 Wallet Information</h3>
                         <div class="form-group">
                             <label for="ownerPrivateKey">Connected Address:</label>
-                            <input type="text" id="ownerPrivateKey" placeholder="MetaMask address will appear here" readonly>
+                            <input type="text" id="ownerPrivateKey" placeholder="Wallet address will appear here" readonly>
                             <small class="form-text">This address will be used for signing transactions</small>
                         </div>
                     </div>
@@ -407,6 +423,53 @@
         let isMetaMaskConnected = false;
         let lastPreparedData = null; // Store the last prepared signature data
 
+        // Global wallet provider reference
+        function getWalletProvider() {
+            return window.WALLET_PROVIDER || 'metamask';
+        }
+
+        function switchWalletProvider() {
+            const selected = document.getElementById('walletProviderSelect').value;
+            window.WALLET_PROVIDER = selected;
+            localStorage.setItem('walletProvider', selected);
+            showNotification(`Switched to ${selected.toUpperCase()} wallet`, 'success');
+
+            const connectMetaMaskBtn = document.getElementById('connectMetaMaskBtn');
+            const connectCircleBtn = document.getElementById('connectCircleBtn');
+            const disconnectBtn = document.getElementById('disconnectBtn');
+            const walletInfoMetaMask = document.getElementById('walletInfoMetaMask');
+            const walletInfoCircle = document.getElementById('walletInfoCircle');
+
+            if (selected === 'circle') {
+                connectMetaMaskBtn.classList.add('hidden');
+                connectCircleBtn.classList.remove('hidden');
+                walletInfoMetaMask.classList.add('hidden');
+                walletInfoCircle.classList.remove('hidden');
+                connectCircleBtn.disabled = true;
+                disconnectBtn.disabled = true;
+                connectCirclePW();
+            } else {
+                connectMetaMaskBtn.classList.remove('hidden');
+                connectCircleBtn.classList.add('hidden');
+                walletInfoMetaMask.classList.remove('hidden');
+                walletInfoCircle.classList.add('hidden');
+                disconnectBtn.disabled = false;
+            }
+        }
+
+        // Load wallet preference from localStorage
+        document.addEventListener('DOMContentLoaded', () => {
+            const storedProvider = localStorage.getItem('walletProvider') || 'metamask';
+            window.WALLET_PROVIDER = storedProvider;
+
+            const select = document.getElementById('walletProviderSelect');
+            if (select) {
+                select.value = storedProvider;
+            }
+
+            switchWalletProvider(); // Ensure buttons match the stored provider
+        });
+
         // Native JavaScript functions to replace ethers
         function parseEther(etherAmount) {
             // Convert ether to wei (1 ether = 10^18 wei)
@@ -436,6 +499,27 @@
             if (element) {
                 element.classList.add('hidden');
             }
+        }
+
+        // Circle Programmable Wallet connection functions
+        function connectCirclePW() {
+            // Simulate connection initialization
+            const address = window.CIRCLE_TREASURY_WALLET_ID;
+            console.log("Circle Programmable Wallet Address:", address);
+            document.getElementById('walletStatus').innerHTML = `
+                <div class="alert alert-success">
+                    <strong>✅ Circle Wallet Ready</strong><br>
+                    Address: ${address}<br>
+                    Circle wallet session initialized.
+                </div>
+            `;
+
+            document.getElementById('ownerPrivateKey').value = address;
+            document.getElementById('senderAddress').value = address;
+            document.getElementById('fundsSenderAddress').value = address;
+
+            addToRecentActivity('Circle Wallet Initialized', address, 'success');
+            showNotification('Circle wallet ready for use!', 'success');
         }
 
         // MetaMask connection functions
@@ -578,6 +662,14 @@
         }
 
         async function signTrade() {
+            if (getWalletProvider() === 'metamask') {
+                return signTradeWithMetamask();
+            } else if (getWalletProvider() === 'circle') {
+                return signTradeWithCircle(); 
+            }
+        }
+
+        async function signTradeWithMetamask() {
             try {
                 const senderAddress = document.getElementById('senderAddress').value;
                 const receiverAddress = document.getElementById('receiverAddress').value;
@@ -688,7 +780,87 @@
             }
         }
 
+        async function signTradeWithCircle() {
+            try {
+                const senderAddress = document.getElementById('senderAddress').value;
+                const receiverAddress = document.getElementById('receiverAddress').value;
+                const fromAmount = document.getElementById('fromAmount').value;
+                const fromCurrency = document.getElementById('fromCurrency').value;
+                const toAmount = document.getElementById('toAmount').value;
+                const toCurrency = document.getElementById('toCurrency').value;
+                const contractAddress = document.getElementById('contractAddress').textContent;
+
+                document.getElementById('signResult').innerHTML = `
+                    <h3>Preparing Trade Data...</h3>
+                    <p>Sending request to backend to sign using Circle wallet...</p>
+                `;
+                document.getElementById('signResult').className = 'result loading';
+                showElement('signResult');
+
+                const tradeData = {
+                    senderAddress,
+                    receiverAddress,
+                    fromAmount,
+                    fromCurrency,
+                    toAmount,
+                    toCurrency,
+                    contractAddress
+                };
+
+                const response = await fetch('/circle/sign-typed-data', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(tradeData)
+                });
+
+                const result = await response.json();
+
+                if (!response.ok || !result.signature) {
+                    throw new Error(result.error || 'Circle signing failed');
+                }
+
+                const signature = result.signature;
+
+                // Store the signature in the form
+                document.getElementById('authorizationSignature').value = signature;
+
+                document.getElementById('signResult').innerHTML = `
+                    <h3>Trade Signed Successfully with Circle Wallet</h3>
+                    <p><strong>Sender:</strong> ${senderAddress}</p>
+                    <p><strong>Receiver:</strong> ${receiverAddress}</p>
+                    <p><strong>Contract:</strong> ${contractAddress}</p>
+                    <p><strong>Trade:</strong> ${fromAmount} ${fromCurrency} → ${toAmount} ${toCurrency}</p>
+                    <p><strong>Signature:</strong></p>
+                    <pre>${signature}</pre>
+                    <p><strong>Message:</strong> EIP-712 trade signature created successfully via Circle developer-controlled wallet</p>
+                `;
+                document.getElementById('signResult').className = 'result success';
+                showElement('signResult');
+                addToRecentActivity('Trade Signed with Circle Wallet', `${fromAmount} ${fromCurrency} → ${toAmount} ${toCurrency}`, 'success');
+                showNotification('Trade signed successfully with Circle!', 'success');
+
+            } catch (error) {
+                console.error('Sign trade error (Circle):', error);
+                document.getElementById('signResult').innerHTML = `
+                    <h3>Signing Error (Circle)</h3>
+                    <p><strong>Error Message:</strong> ${error.message}</p>
+                    <pre>${error.stack || 'No stack trace available'}</pre>
+                `;
+                document.getElementById('signResult').className = 'result error';
+                showElement('signResult');
+                addToRecentActivity('Circle Signing Error', error.message, 'error');
+            }
+        }
+
         async function broadcastTrade() {
+            if (getWalletProvider() === 'metamask') {
+                return broadcastTradeWithMetamask();
+            } else if (getWalletProvider() === 'circle') {
+                return broadcastTradeWithCircle();
+            }
+        }
+
+        async function broadcastTradeWithMetamask() {
             try {
                 const senderAddress = document.getElementById('senderAddress').value;
                 const receiverAddress = document.getElementById('receiverAddress').value;
@@ -698,7 +870,6 @@
                 const toCurrency = document.getElementById('toCurrency').value;
                 const signature = document.getElementById('authorizationSignature').value;
                 const contractAddress = document.getElementById('contractAddress').textContent; // Get from Dashboard tab
-
 
                 document.getElementById('broadcastResult').innerHTML = `
                     <h3>Recording Trade...</h3>
@@ -788,6 +959,102 @@
             }
         }
 
+        async function broadcastTradeWithCircle() {
+            try {
+                const senderAddress = document.getElementById('senderAddress').value;
+                const receiverAddress = document.getElementById('receiverAddress').value;
+                const fromAmount = document.getElementById('fromAmount').value;
+                const fromCurrency = document.getElementById('fromCurrency').value;
+                const toAmount = document.getElementById('toAmount').value;
+                const toCurrency = document.getElementById('toCurrency').value;
+                const signature = document.getElementById('authorizationSignature').value;
+                const contractAddress = document.getElementById('contractAddress').textContent; // Get from Dashboard tab
+
+                document.getElementById('broadcastResult').innerHTML = `
+                    <h3>Recording Trade...</h3>
+                    <p>Please wait while the trade is being recorded on the blockchain...</p>
+                `;
+                document.getElementById('broadcastResult').className = 'result';
+                showElement('broadcastResult');
+
+                const response = await fetch('/circle/prepare-record-transaction', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        senderAddress: senderAddress,
+                        receiverAddress: receiverAddress,
+                        fromAmount: parseFloat(fromAmount),
+                        fromCurrency,
+                        toAmount: parseFloat(toAmount),
+                        toCurrency,
+                        signature,
+                        contractAddress
+                    })
+                });
+                console.log("broadacst FE response", response);
+
+                const result = await response.json();
+                const data = result.transactionData;
+                const txHash = result.txHash; // TODO: this is the correct txHash, just an id returned from backend
+
+                const transactionParameters = {
+                    to: contractAddress,
+                    from: senderAddress,
+                    data: data,
+                    value: '0x0'  // No ETH sent - just recording the trade. MetaMask requires value to be provided.
+                };
+
+                try {                    
+                    // Broadcast the complete trade object
+                    const tradeObject = {
+                        fromAmount: parseFloat(fromAmount),
+                        toAmount: parseFloat(toAmount),
+                        fromCurrency: fromCurrency,
+                        toCurrency: toCurrency,
+                        senderAddress: senderAddress,
+                        receiverAddress: receiverAddress,
+                        transactionHash: txHash,
+                        timestamp: new Date().toISOString(),
+                        status: 'recorded'
+                    };
+
+                    // Add to recent activity with the complete trade details
+                    addToRecentActivity('Trade Recorded', `${fromAmount} ${fromCurrency} to ${toAmount} ${toCurrency} trade recorded: ${txHash}`, 'success');
+
+                    document.getElementById('broadcastResult').innerHTML = `
+                        <h3>Trade Recorded Successfully</h3>
+                        <p><strong>Transaction Hash:</strong> ${txHash}</p>
+                        <p><strong>Trade Details:</strong> ${fromAmount} ${fromCurrency} from ${senderAddress} to ${toAmount} ${toCurrency} for ${receiverAddress}</p>
+                        <p><strong>Broadcasted Trade Object:</strong></p>
+                        <pre>${JSON.stringify(tradeObject, null, 2)}</pre>
+                        <p><strong>Message:</strong> Trade recorded successfully and trade object broadcasted</p>
+                        <p><strong>Next Steps:</strong> Both parties need to fund the trade using the fund trade function. The trade will execute automatically once both parties have funded.</p>
+                    `;
+                    document.getElementById('broadcastResult').className = 'result success';
+                    showElement('broadcastResult');
+
+                } catch (error) {
+                    console.error('Transaction error details:', error);
+                    throw new Error(`Transaction failed: ${error.message || error.code || 'Unknown error'}`);
+                }
+
+            } catch (error) {
+                console.error('Record trade error:', error);
+                document.getElementById('broadcastResult').innerHTML = `
+                    <h3>Record Trade Error</h3>
+                    <p><strong>Error Type:</strong> ${error.name || 'Unknown'}</p>
+                    <p><strong>Error Message:</strong> ${error.message}</p>
+                    <p><strong>Stack Trace:</strong></p>
+                    <pre>${error.stack || 'No stack trace available'}</pre>
+                `;
+                document.getElementById('broadcastResult').className = 'result error';
+                showElement('broadcastResult');
+                addToRecentActivity('Record Trade Error', error.message, 'error');
+            }
+        }
+
         async function deployContract() {
             try {
                 // Show loading state
@@ -798,7 +1065,10 @@
                 document.getElementById('deployResult').className = 'result loading';
                 showElement('deployResult');
 
-                const response = await fetch('/ethereum/deploy-contract', {
+                const isCircle = getWalletProvider() === 'circle';
+                const endpoint = isCircle ? '/circle/deploy-contract' : '/ethereum/deploy-contract';
+
+                const response = await fetch(endpoint, {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json'
@@ -828,6 +1098,7 @@
                     <h3>Contract Deployed Successfully</h3>
                     <p><strong>Contract Address:</strong> ${result.contractAddress}</p>
                     <p><strong>Deployer:</strong> ${result.deployer}</p>
+                    <p><strong>Deployment Transaction ID:</strong> ${result.deploymentTransactionId}</p>
                     <p><strong>Transaction Hash:</strong> ${result.transactionHash}</p>
                     <p><strong>Message:</strong> ${result.message}</p>
                 `;

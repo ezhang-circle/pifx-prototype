@@ -3,6 +3,31 @@ const { ethers } = require('ethers');
 const path = require('path');
 const app = express();
 const PORT = process.env.PORT || 3000;
+require('dotenv').config({ path: '.env.local' });
+const forge = require("node-forge");
+const { parseUnits } = require('ethers');
+const {
+  initiateSmartContractPlatformClient,
+} = require('@circle-fin/smart-contract-platform')
+const {
+  initiateDeveloperControlledWalletsClient,
+} = require('@circle-fin/developer-controlled-wallets')
+
+const circleContractSdk = initiateSmartContractPlatformClient({
+  apiKey: process.env.CIRCLE_API_KEY,
+  entitySecret: process.env.CIRCLE_ENTITY_SECRET,
+})
+const client = initiateDeveloperControlledWalletsClient({
+  apiKey: process.env.CIRCLE_API_KEY,
+  entitySecret: process.env.CIRCLE_ENTITY_SECRET,
+})
+
+// Compute encrypted entity secret once
+const entitySecret = forge.util.hexToBytes(process.env.CIRCLE_ENTITY_SECRET);
+const publicKey = forge.pki.publicKeyFromPem(process.env.CIRCLE_PUBLIC_KEY);
+const entitySecretCiphertext = publicKey.encrypt(entitySecret, 'RSA-OAEP', { md: forge.md.sha256.create(), mgf1: { md: forge.md.sha256.create(), }, });
+
+
 
 // Middleware
 app.use(express.json());
@@ -121,6 +146,80 @@ app.post('/ethereum/prepare-record-transaction', async (req, res) => {
   }
 });
 
+app.post('/circle/prepare-record-transaction', async (req, res) => {
+  try {
+    const {
+      senderAddress,
+      receiverAddress,
+      fromAmount,
+      fromCurrency,
+      toAmount,
+      toCurrency,
+      signature,
+      contractAddress
+    } = req.body;
+
+      // Contract ABI for the recordTrade function
+    const contractABI = [
+      "function recordTrade(address senderAddress, address receiverAddress, uint256 fromAmount, string fromCurrency, uint256 toAmount, string toCurrency, bytes signature) external"
+    ];
+
+    // Create contract interface for ABI encoding
+    const iface = new ethers.Interface(contractABI);
+
+    // Encode the function call
+    const transactionData = iface.encodeFunctionData("recordTrade", [
+      senderAddress,
+      receiverAddress,
+      fromAmount,
+      fromCurrency,
+      toAmount,
+      toCurrency,
+      signature
+    ]);
+
+    const response = await client.createContractExecutionTransaction({
+      walletId: process.env.CIRCLE_TREASURY_WALLET_ID,
+      contractAddress: contractAddress,
+      abiFunctionSignature: 'recordTrade(address,address,uint256,string,uint256,string,bytes)',
+      abiParameters: [
+        senderAddress,
+        receiverAddress,
+        fromAmount.toString(),
+        fromCurrency,
+        toAmount.toString(),
+        toCurrency,
+        signature
+      ],
+      fee: {
+        type: 'level',
+        config: { feeLevel: 'MEDIUM' }
+      }
+    });
+    console.log("broadacst response", response);
+    if (response.status === 201) {
+      res.json({
+        success: true,
+        transactionData: transactionData,
+        message: 'Transaction Data prepared for MetaMask execution',
+        txHash: response.data.id
+      });
+    } else {
+      res.status(500).json({ 
+        error: 'Failed to prepare transaction data',
+        message: response.message 
+      });
+    }
+  } catch (error) {
+    console.error('Prepare Record Trade Transaction error:', error);
+    res.status(500).json({ 
+      error: 'Failed to prepare transaction data',
+      message: error.message 
+    });
+  }
+});
+
+
 // Deploy smart contract
 app.post('/ethereum/deploy-contract', async (req, res) => {
   try {
@@ -173,6 +272,62 @@ app.post('/ethereum/deploy-contract', async (req, res) => {
       message: error.message,
       details: error.stack 
     });
+  }
+});
+
+// Deploy contract with Circle Programmable Wallet
+app.post('/circle/deploy-contract', async (req, res) => {
+  try {
+    // Load compiled contract
+    const artifactPath = path.join(__dirname, 'artifacts/contracts/TradeContract.sol/TradeContract.json');
+    const fs = require('fs');
+    const artifact = JSON.parse(fs.readFileSync(artifactPath, 'utf8'));
+    const contractABI = artifact.abi;
+    const bytecode = artifact.bytecode;
+
+    const response = await circleContractSdk.deployContract({
+      name: 'First Contract Name',
+      description: 'First Contract Description',
+      walletId: process.env.CIRCLE_TREASURY_WALLET_ID,
+      blockchain: 'ETH-SEPOLIA',
+      fee: {
+        type: 'level',
+        config: {
+          feeLevel: 'MEDIUM',
+        },
+      },
+      constructorParameters: [],
+      entitySecretCiphertext: forge.util.encode64(entitySecretCiphertext),
+      abiJSON: JSON.stringify(contractABI),
+      bytecode: bytecode,
+    })
+   
+    const contractResposne = response.data;
+    const contractId = contractResposne.contractId;
+    const transactionId = contractResposne.transactionId;
+    const contractAddress = '0x0a7E2D0fB846D43440584B79Ca7B262D51BEa9Ae';
+    console.log("Contract ID", contractId);
+    console.log("Transaction ID", transactionId);
+   ;
+    // Wait for deployment to complete
+    const deployed = await circleContractSdk.getContract(
+      {id: contractId}
+    );
+   
+    const {id, txHash, deployerWalletID, deploymentTransactionId, deployerAddress} = deployed.data.contract;
+
+    res.json({
+      success: true,
+      contractAddress: contractAddress,
+      deployer: deployerAddress,
+      deploymentTransactionId: deploymentTransactionId, 
+      transactionHash: txHash, 
+      message: 'TradeContract deployed successfully'
+    });
+
+  } catch (err) {
+    console.error('Circle deploy-contract error:', err);
+    res.status(500).json({ error: err.message });
   }
 });
 
@@ -598,6 +753,65 @@ app.get('/ethereum/trades-by-hash', async (req, res) => {
     });
   }
 });
+
+app.post('/circle/sign-typed-data', async (req, res) => {
+  try {
+    const { senderAddress, receiverAddress, fromAmount, fromCurrency, toAmount, toCurrency, contractAddress } = req.body;
+
+    const domain = {
+      name: 'PiFX',
+      version: '1',
+      chainId: 11155111,
+      verifyingContract: contractAddress
+    };
+
+    const types = {
+      Trade: [
+          { name: 'senderAddress', type: 'address' },
+          { name: 'receiverAddress', type: 'address' },
+          { name: 'fromAmount', type: 'uint256' },
+          { name: 'fromCurrency', type: 'string' },
+          { name: 'toAmount', type: 'uint256' },
+          { name: 'toCurrency', type: 'string' }
+      ],
+      EIP712Domain: [
+          { name: 'name', type: 'string' },
+          { name: 'version', type: 'string' },
+          { name: 'chainId', type: 'uint256' },
+          { name: 'verifyingContract', type: 'address' }
+      ]
+    };
+
+    const value = {
+        senderAddress: senderAddress,
+        receiverAddress: receiverAddress,
+        fromAmount: fromAmount,
+        fromCurrency: fromCurrency,
+        toAmount: toAmount,
+        toCurrency: toCurrency
+    };
+
+    const data = JSON.stringify({
+      types: types,
+      primaryType: 'Trade',
+      domain: domain,
+      message: value
+    });
+
+    const signatureResult = await client.signTypedData({
+      walletId: process.env.CIRCLE_TREASURY_WALLET_ID,
+      data,
+      memo: "Trade signed with Circle Wallet to confirm trade between Maker and Taker"
+    });
+
+    console.log("signatureResult", signatureResult);
+    res.json({ signature: signatureResult.data.signature });
+  } catch (error) {
+    console.error('signTypedData error:', error);
+    res.status(500).json({ error: 'Circle signTypedData failed', details: error.message });
+  }
+});
+
 
 // Start server
 app.listen(PORT, () => {

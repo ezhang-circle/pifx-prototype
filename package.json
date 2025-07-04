@@ -19,8 +19,13 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
+    "@circle-fin/developer-controlled-wallets": "^8.3.0",
+    "@circle-fin/smart-contract-platform": "^8.3.0",
+    "axios": "^1.10.0",
+    "dotenv": "^17.0.1",
     "ethers": "^6.14.4",
-    "express": "^4.18.2"
+    "express": "^4.18.2",
+    "node-forge": "^1.3.1"
   },
   "devDependencies": {
     "@nomicfoundation/hardhat-toolbox": "^4.0.0",
