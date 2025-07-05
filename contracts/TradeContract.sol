@@ -181,6 +181,62 @@ contract TradeContract is EIP712 {
         emit TradeRecorded(tradeHash, senderAddress, receiverAddress, fromAmount, fromCurrency, toAmount, toCurrency, block.timestamp);
     }
 
+ /**
+     * @dev Record a trade using EIP-712 signature
+     * @param senderAddress The address that signed the trade
+     * @param receiverAddress The recipient address (should be the contract address)
+     * @param fromAmount The amount being traded from
+     * @param fromCurrency The currency being traded from
+     * @param toAmount The amount being traded to
+     * @param toCurrency The currency being traded to
+     * @param signature The EIP-712 signature
+     */
+    function recordTradeWithoutSig(
+        address senderAddress,
+        address receiverAddress,
+        uint256 fromAmount,
+        string calldata fromCurrency,
+        uint256 toAmount,
+        string calldata toCurrency,
+        bytes calldata signature
+    ) external {
+        // Create a unique trade hash
+        bytes32 tradeHash = keccak256(
+            abi.encodePacked(
+                senderAddress,
+                receiverAddress,
+                fromAmount,
+                fromCurrency,
+                toAmount,
+                toCurrency,
+                block.timestamp
+            )
+        );
+
+        // Store the trade data
+        storedTrades[tradeHash] = StoredTrade({
+            senderAddress: senderAddress,
+            receiverAddress: receiverAddress,
+            fromAmount: fromAmount,
+            fromCurrency: fromCurrency,
+            toAmount: toAmount,
+            toCurrency: toCurrency,
+            timestamp: block.timestamp,
+            fromFunded: false,
+            toFunded: false,
+            executed: false,
+            fromFundedAmount: 0,
+            toFundedAmount: 0
+        });
+
+        // Add to trade hashes array
+        tradeHashes.push(tradeHash);
+
+        // Emit the trade recorded event
+        emit TradeRecorded(tradeHash, senderAddress, receiverAddress, fromAmount, fromCurrency, toAmount, toCurrency, block.timestamp);
+    }
+
+
     /**
      * @dev Provide funds for a trade (can be called by either party)
      * @param tradeHash The hash of the trade

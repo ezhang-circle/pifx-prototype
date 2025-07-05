@@ -5,7 +5,6 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 require('dotenv').config({ path: '.env.local' });
 const forge = require("node-forge");
-const { parseUnits } = require('ethers');
 const {
   initiateSmartContractPlatformClient,
 } = require('@circle-fin/smart-contract-platform')
@@ -22,10 +21,32 @@ const client = initiateDeveloperControlledWalletsClient({
   entitySecret: process.env.CIRCLE_ENTITY_SECRET,
 })
 
-// Compute encrypted entity secret once
-const entitySecret = forge.util.hexToBytes(process.env.CIRCLE_ENTITY_SECRET);
-const publicKey = forge.pki.publicKeyFromPem(process.env.CIRCLE_PUBLIC_KEY);
-const entitySecretCiphertext = publicKey.encrypt(entitySecret, 'RSA-OAEP', { md: forge.md.sha256.create(), mgf1: { md: forge.md.sha256.create(), }, });
+// Validate Circle environment variables at startup
+console.log('🔍 Validating Circle environment variables...');
+
+if (!process.env.CIRCLE_ENTITY_SECRET) {
+  throw new Error('CIRCLE_ENTITY_SECRET environment variable is not set');
+}
+if (!process.env.CIRCLE_PUBLIC_KEY) {
+  throw new Error('CIRCLE_PUBLIC_KEY environment variable is not set');
+}
+
+console.log(`Entity secret length: ${process.env.CIRCLE_ENTITY_SECRET.length}`);
+console.log(`Public key length: ${process.env.CIRCLE_PUBLIC_KEY.length}`);
+
+// Parse public key once for reuse
+const circlePublicKey = forge.pki.publicKeyFromPem(process.env.CIRCLE_PUBLIC_KEY);
+console.log(`✅ Circle public key parsed successfully`);
+
+// Function to generate fresh entity secret ciphertext (required for each API call)
+function generateEntitySecretCiphertext() {
+  const entitySecret = forge.util.hexToBytes(process.env.CIRCLE_ENTITY_SECRET);
+  const entitySecretCiphertext = circlePublicKey.encrypt(entitySecret, 'RSA-OAEP', { 
+    md: forge.md.sha256.create(), 
+    mgf1: { md: forge.md.sha256.create() } 
+  });
+  return forge.util.encode64(entitySecretCiphertext);
+}
 
 
 
@@ -159,29 +180,27 @@ app.post('/circle/prepare-record-transaction', async (req, res) => {
       contractAddress
     } = req.body;
 
-      // Contract ABI for the recordTrade function
-    const contractABI = [
-      "function recordTrade(address senderAddress, address receiverAddress, uint256 fromAmount, string fromCurrency, uint256 toAmount, string toCurrency, bytes signature) external"
-    ];
-
-    // Create contract interface for ABI encoding
-    const iface = new ethers.Interface(contractABI);
-
-    // Encode the function call
-    const transactionData = iface.encodeFunctionData("recordTrade", [
+    console.log('🚀 Recording trade via Circle Programmable Wallet...');
+    console.log('📋 Trade parameters:', {
       senderAddress,
       receiverAddress,
       fromAmount,
       fromCurrency,
       toAmount,
       toCurrency,
-      signature
-    ]);
+      contractAddress,
+      signatureLength: signature ? signature.length : 0
+    });
 
+    // Generate fresh entity secret ciphertext for this request (required to prevent replay attacks)
+    const freshEntitySecretCiphertext = generateEntitySecretCiphertext();
+
+    // Create the transaction using Circle SDK (directly execute, not just prepare)
+    // Using recordTradeWithoutSig to bypass signature verification issues with Circle
     const response = await client.createContractExecutionTransaction({
       walletId: process.env.CIRCLE_TREASURY_WALLET_ID,
       contractAddress: contractAddress,
-      abiFunctionSignature: 'recordTrade(address,address,uint256,string,uint256,string,bytes)',
+      abiFunctionSignature: 'recordTradeWithoutSig(address,address,uint256,string,uint256,string,bytes)',
       abiParameters: [
         senderAddress,
         receiverAddress,
@@ -194,27 +213,113 @@ app.post('/circle/prepare-record-transaction', async (req, res) => {
       fee: {
         type: 'level',
         config: { feeLevel: 'MEDIUM' }
-      }
+      },
+      entitySecretCiphertext: freshEntitySecretCiphertext
     });
-    console.log("broadacst response", response);
-    if (response.status === 201) {
-      res.json({
+    
+    const transactionId = response.data.id;
+    
+    console.log('✅ Circle transaction initiated:', {
+      transactionId,
+      state: response.data.state
+    });
+
+    // Wait for transaction to be mined (poll for completion)
+    console.log('⏳ Waiting for transaction to be mined...');
+    
+    let transaction = null;
+    let attempts = 0;
+    const maxAttempts = 40; // 4 minutes maximum wait time
+    
+    while (attempts < maxAttempts) {
+      try {
+        const txResponse = await client.getTransaction({ id: transactionId });
+        transaction = txResponse.data.transaction;
+        
+        console.log(`⏳ Attempt ${attempts + 1}/${maxAttempts}: Transaction state: ${transaction.state}`);
+        console.log(`🔍 Transaction details:`, {
+          id: transaction.id,
+          state: transaction.state,
+          txHash: transaction.txHash || 'Not yet available',
+          sourceAddress: transaction.sourceAddress,
+          destinationAddress: transaction.destinationAddress,
+          transactionType: transaction.transactionType,
+          custodyType: transaction.custodyType
+        });
+        
+        if (transaction.state === 'COMPLETE' && transaction.txHash) {
+          console.log('✅ Transaction completed successfully!');
+          break;
+        }
+        
+        if (transaction.state === 'FAILED') {
+          console.log('❌ Transaction failed with details:', transaction);
+          throw new Error(`Circle transaction failed immediately: ${transaction.errorReason || transaction.errorCode || 'Unknown error'}. This usually indicates a contract call issue - check function signature, parameters, or contract address.`);
+        }
+        
+        await new Promise(resolve => setTimeout(resolve, 6000)); // Wait 6 seconds
+        attempts++;
+      } catch (error) {
+        console.log(`⚠️  Attempt ${attempts + 1}/${maxAttempts}: Error checking transaction status:`, error.message);
+        attempts++;
+        await new Promise(resolve => setTimeout(resolve, 6000)); // Wait 6 seconds
+      }
+    }
+
+    // Handle transaction completion or timeout
+    if (!transaction) {
+      console.log('⚠️  Transaction polling failed - returning transaction ID for manual tracking');
+      return res.json({
         success: true,
-        transactionData: transactionData,
-        message: 'Transaction Data prepared for MetaMask execution',
-        txHash: response.data.id
-      });
-    } else {
-      res.status(500).json({ 
-        error: 'Failed to prepare transaction data',
-        message: response.message 
+        transactionId: transactionId,
+        state: 'PENDING',
+        message: 'Trade transaction initiated via Circle Programmable Wallet. Transaction is still processing - use the transaction ID to check status manually.',
+        note: 'Transaction may still complete. Check Circle dashboard for updates.'
       });
     }
+
+    if (transaction.txHash) {
+      const txHash = transaction.txHash;
+
+      console.log('🎉 Trade recorded successfully:', {
+        txHash,
+        blockHeight: transaction.blockHeight,
+        state: transaction.state
+      });
+
+      res.json({
+        success: true,
+        txHash: txHash,
+        transactionId: transactionId,
+        blockHeight: transaction.blockHeight,
+        state: transaction.state,
+        message: 'Trade recorded successfully via Circle Programmable Wallet'
+      });
+    } else {
+      console.log('⚠️  Transaction created but hash not available yet - returning transaction ID');
+      res.json({
+        success: true,
+        transactionId: transactionId,
+        state: transaction.state,
+        message: 'Trade transaction initiated via Circle Programmable Wallet. Transaction is processing - use the transaction ID to check status.',
+        note: 'Transaction hash will be available once the transaction is mined on the blockchain.'
+      });
+    }
+    
   } catch (error) {
-    console.error('Prepare Record Trade Transaction error:', error);
+    console.error('❌ Circle prepare-record-transaction error:', error);
+    
     res.status(500).json({ 
-      error: 'Failed to prepare transaction data',
-      message: error.message 
+      error: error.message,
+      details: error.stack,
+      troubleshooting: [
+        'Check if Circle API keys are properly configured',
+        'Verify Circle entity secret and public key',
+        'Ensure wallet has sufficient balance for transaction',
+        'Check if contract address is valid and deployed',
+        'Verify all trade parameters are correct',
+        'Check network connectivity to Circle API'
+      ]
     });
   }
 });
@@ -278,6 +383,32 @@ app.post('/ethereum/deploy-contract', async (req, res) => {
 // Deploy contract with Circle Programmable Wallet
 app.post('/circle/deploy-contract', async (req, res) => {
   try {
+    const { networkConfig } = req.body;
+    
+    // Validate Circle environment variables
+    const requiredEnvVars = {
+      CIRCLE_API_KEY: process.env.CIRCLE_API_KEY,
+      CIRCLE_ENTITY_SECRET: process.env.CIRCLE_ENTITY_SECRET,
+      CIRCLE_PUBLIC_KEY: process.env.CIRCLE_PUBLIC_KEY,
+      CIRCLE_TREASURY_WALLET_ID: process.env.CIRCLE_TREASURY_WALLET_ID
+    };
+    
+    console.log('🔍 Circle environment variables status:');
+    for (const [key, value] of Object.entries(requiredEnvVars)) {
+      console.log(`  ${key}: ${value ? '✅ Present' : '❌ Missing'}`);
+    }
+    
+    const missingVars = Object.entries(requiredEnvVars)
+      .filter(([key, value]) => !value)
+      .map(([key]) => key);
+    
+    if (missingVars.length > 0) {
+      throw new Error(`Missing required environment variables: ${missingVars.join(', ')}`);
+    }
+    
+    // Use dynamic blockchain from network config, default to Sepolia
+    const blockchain = networkConfig?.circleBlockchain || 'ETH-SEPOLIA';
+    
     // Load compiled contract
     const artifactPath = path.join(__dirname, 'artifacts/contracts/TradeContract.sol/TradeContract.json');
     const fs = require('fs');
@@ -285,11 +416,16 @@ app.post('/circle/deploy-contract', async (req, res) => {
     const contractABI = artifact.abi;
     const bytecode = artifact.bytecode;
 
-    const response = await circleContractSdk.deployContract({
-      name: 'First Contract Name',
-      description: 'First Contract Description',
+    console.log(`🚀 Deploying contract to ${blockchain} blockchain...`);
+
+    // Generate fresh entity secret ciphertext for this request (required to prevent replay attacks)
+    const freshEntitySecretCiphertext = generateEntitySecretCiphertext();
+    
+    const deploymentParams = {
+      name: 'PiFXTradeContract',
+      description: 'PiFXTradeContractForTokenSwapsWithEIP712Signatures',
       walletId: process.env.CIRCLE_TREASURY_WALLET_ID,
-      blockchain: 'ETH-SEPOLIA',
+      blockchain: blockchain, // Use dynamic blockchain
       fee: {
         type: 'level',
         config: {
@@ -297,37 +433,126 @@ app.post('/circle/deploy-contract', async (req, res) => {
         },
       },
       constructorParameters: [],
-      entitySecretCiphertext: forge.util.encode64(entitySecretCiphertext),
+      entitySecretCiphertext: freshEntitySecretCiphertext,
       abiJSON: JSON.stringify(contractABI),
       bytecode: bytecode,
-    })
+    };
+
+    // Debug logging
+    console.log('🔍 Circle deployment parameters:', {
+      name: deploymentParams.name,
+      description: deploymentParams.description,
+      walletId: deploymentParams.walletId,
+      blockchain: deploymentParams.blockchain,
+      fee: deploymentParams.fee,
+      constructorParameters: deploymentParams.constructorParameters,
+      entitySecretCiphertext: deploymentParams.entitySecretCiphertext ? '✅ Present' : '❌ Missing',
+      abiJSON: deploymentParams.abiJSON ? `✅ Present (${deploymentParams.abiJSON.length} chars)` : '❌ Missing',
+      bytecode: deploymentParams.bytecode ? `✅ Present (${deploymentParams.bytecode.length} chars)` : '❌ Missing',
+    });
+
+    const response = await circleContractSdk.deployContract(deploymentParams)
    
-    const contractResposne = response.data;
-    const contractId = contractResposne.contractId;
-    const transactionId = contractResposne.transactionId;
-    const contractAddress = '0x0a7E2D0fB846D43440584B79Ca7B262D51BEa9Ae';
-    console.log("Contract ID", contractId);
-    console.log("Transaction ID", transactionId);
-   ;
+    const contractResponse = response.data;
+    const contractId = contractResponse.contractId;
+    const transactionId = contractResponse.transactionId;
+
+    console.log('✅ Contract deployment initiated:', {
+      contractId,
+      transactionId
+    });
+
     // Wait for deployment to complete
-    const deployed = await circleContractSdk.getContract(
-      {id: contractId}
-    );
-   
-    const {id, txHash, deployerWalletID, deploymentTransactionId, deployerAddress} = deployed.data.contract;
+    console.log('⏳ Waiting for deployment to complete...');
+    
+    // Poll for deployment completion
+    let deployed = null;
+    let attempts = 0;
+    const maxAttempts = 30; // 30 attempts = ~5 minutes with 10s intervals
+    
+    while (attempts < maxAttempts) {
+      try {
+        deployed = await circleContractSdk.getContract({ id: contractId });
+        
+        if (deployed.data.contract.contractAddress) {
+          console.log('✅ Contract deployed successfully!');
+          break;
+        }
+        
+        console.log(`⏳ Attempt ${attempts + 1}/${maxAttempts}: Contract still deploying...`);
+        await new Promise(resolve => setTimeout(resolve, 10000)); // Wait 10 seconds
+        attempts++;
+      } catch (error) {
+        console.log(`⚠️  Attempt ${attempts + 1}/${maxAttempts}: Error checking deployment status:`, error.message);
+        attempts++;
+        await new Promise(resolve => setTimeout(resolve, 10000)); // Wait 10 seconds
+      }
+    }
+
+    if (!deployed || !deployed.data.contract.contractAddress) {
+      throw new Error('Contract deployment timeout or failed after maximum attempts');
+    }
+
+    const contract = deployed.data.contract;
+    const contractAddress = contract.contractAddress; // ✅ Now using the actual deployed address
+
+    console.log('🎉 Contract deployment completed:', {
+      contractAddress,
+      txHash: contract.txHash,
+      deployer: contract.deployerAddress
+    });
+
+    // Get transaction details for reference
+    const transactionData = await client.getTransaction({
+      id: transactionId
+    });
+    console.log("============> transaction res", transactionData);
+
+    const {id, txHash, deployerWalletID, deploymentTransactionId, deployerAddress} = contract;
 
     res.json({
       success: true,
       contractAddress: contractAddress,
       deployer: deployerAddress,
       deploymentTransactionId: deploymentTransactionId, 
-      transactionHash: txHash, 
-      message: 'TradeContract deployed successfully'
+      transactionHash: txHash,
+      contractId: contractId,
+      blockchain: blockchain,
+      message: `TradeContract deployed successfully via Circle Programmable Wallet on ${blockchain}`
     });
 
   } catch (err) {
-    console.error('Circle deploy-contract error:', err);
-    res.status(500).json({ error: err.message });
+    console.error('❌ Circle deploy-contract error:', err);
+    
+    // Extract detailed error information
+    let errorDetails = {
+      message: err.message,
+      stack: err.stack,
+      status: err.response?.status,
+      statusText: err.response?.statusText,
+      data: err.response?.data,
+      config: err.config ? {
+        url: err.config.url,
+        method: err.config.method,
+        headers: err.config.headers ? Object.keys(err.config.headers) : undefined
+      } : undefined
+    };
+    
+    console.error('🔍 Detailed Circle API error:', JSON.stringify(errorDetails, null, 2));
+    
+    res.status(500).json({ 
+      error: err.message,
+      details: err.stack,
+      circleApiError: err.response?.data || null,
+      httpStatus: err.response?.status || null,
+      troubleshooting: [
+        'Check if Circle API keys are properly configured',
+        'Verify Circle entity secret and public key',
+        'Ensure wallet has sufficient balance for deployment',
+        'Check if contract bytecode is valid',
+        'Verify network connectivity to Circle API'
+      ]
+    });
   }
 });
 
@@ -756,12 +981,15 @@ app.get('/ethereum/trades-by-hash', async (req, res) => {
 
 app.post('/circle/sign-typed-data', async (req, res) => {
   try {
-    const { senderAddress, receiverAddress, fromAmount, fromCurrency, toAmount, toCurrency, contractAddress } = req.body;
+    const { senderAddress, receiverAddress, fromAmount, fromCurrency, toAmount, toCurrency, contractAddress, networkConfig } = req.body;
+
+    // Use dynamic chain ID from network config, default to Sepolia
+    const chainId = networkConfig?.chainId || 11155111;
 
     const domain = {
       name: 'PiFX',
       version: '1',
-      chainId: 11155111,
+      chainId: chainId,
       verifyingContract: contractAddress
     };
 

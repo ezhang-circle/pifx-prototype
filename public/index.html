@@ -31,8 +31,8 @@
                     <div class="form-group">
                         <label for="walletProviderSelect">Wallet Provider:</label>
                         <select id="walletProviderSelect" onchange="switchWalletProvider()">
-                        <option value="metamask">MetaMask</option>
-                        <option value="circle">Circle Programmable Wallet</option>
+                        <option value="metamask">MetaMask (Local)</option>
+                        <option value="circle">Circle Wallet</option>
                         </select>
                     </div>
                 </div>
@@ -42,7 +42,7 @@
                         <div>
                             <h3>Contract Information</h3>
                             <p><strong>Contract Address:</strong> <span id="contractAddress">Not deployed</span></p>
-                            <p><strong>Network:</strong> <span id="network">Localhost</span></p>
+                            <p><strong>Network:</strong> <span id="network">Hardhat Local</span></p>
                             <p><strong>Block Number:</strong> <span id="blockNumber">-</span></p>
                         </div>
                         <div>
@@ -428,11 +428,47 @@
             return window.WALLET_PROVIDER || 'metamask';
         }
 
+        // Dynamic network configuration based on wallet provider
+        function getNetworkConfig() {
+            const provider = getWalletProvider();
+            if (provider === 'circle') {
+                return {
+                    chainId: 11155111, // Sepolia testnet
+                    chainIdHex: '0xaa36a7',
+                    networkName: 'Sepolia Testnet',
+                    rpcUrl: 'https://ethereum-sepolia.publicnode.com',
+                    blockExplorer: 'https://sepolia.etherscan.io',
+                    isCircle: true,
+                    circleBlockchain: 'ETH-SEPOLIA'
+                };
+            } else {
+                return {
+                    chainId: 31337, // Hardhat local
+                    chainIdHex: '0x7a69',
+                    networkName: 'Hardhat Local',
+                    rpcUrl: 'http://127.0.0.1:8545',
+                    blockExplorer: null,
+                    isCircle: false
+                };
+            }
+        }
+
+        // Helper function to check if using Circle wallet
+        function isCircleWallet() {
+            const provider = getWalletProvider();
+            return provider === 'circle';
+        }
+
         function switchWalletProvider() {
             const selected = document.getElementById('walletProviderSelect').value;
             window.WALLET_PROVIDER = selected;
             localStorage.setItem('walletProvider', selected);
-            showNotification(`Switched to ${selected.toUpperCase()} wallet`, 'success');
+            
+            // Update network display based on wallet provider
+            const networkConfig = getNetworkConfig();
+            document.getElementById('network').textContent = networkConfig.networkName;
+            
+            showNotification(`Switched to ${selected.toUpperCase()} wallet (${networkConfig.networkName})`, 'success');
 
             const connectMetaMaskBtn = document.getElementById('connectMetaMaskBtn');
             const connectCircleBtn = document.getElementById('connectCircleBtn');
@@ -440,7 +476,7 @@
             const walletInfoMetaMask = document.getElementById('walletInfoMetaMask');
             const walletInfoCircle = document.getElementById('walletInfoCircle');
 
-            if (selected === 'circle') {
+            if (isCircleWallet()) {
                 connectMetaMaskBtn.classList.add('hidden');
                 connectCircleBtn.classList.remove('hidden');
                 walletInfoMetaMask.classList.add('hidden');
@@ -553,11 +589,12 @@
                 `;
 
                 if (!isCorrectNetwork) {
+                    const networkConfig = getNetworkConfig();
                     statusHtml += `
                         <br><br>
                         <strong>⚠️ Wrong Network!</strong><br>
-                        Please switch to Hardhat local network for full functionality.<br>
-                        <button class="btn btn-warning" onclick="switchToHardhat()" style="margin-top: 10px;">Switch to Hardhat</button>
+                        Please switch to ${networkConfig.networkName} for full functionality.<br>
+                        <button class="btn btn-warning" onclick="switchToCorrectNetwork()" style="margin-top: 10px;">Switch Network</button>
                     `;
                 }
 
@@ -615,7 +652,8 @@
                     '0x5': 'Goerli Testnet',
                     '0x2a': 'Kovan Testnet',
                     '0x7a69': 'Hardhat Local',
-                    '0x539': 'Hardhat Local (Decimal)'
+                    '0x539': 'Hardhat Local (Decimal)',
+                    '0xaa36a7': 'Sepolia Testnet'
                 };
                 return networkNames[chainId] || `Chain ID: ${parseInt(chainId, 16)}`;
             } catch (error) {
@@ -662,10 +700,10 @@
         }
 
         async function signTrade() {
-            if (getWalletProvider() === 'metamask') {
-                return signTradeWithMetamask();
-            } else if (getWalletProvider() === 'circle') {
+            if (isCircleWallet()) {
                 return signTradeWithCircle(); 
+            } else {
+                return signTradeWithMetamask();
             }
         }
 
@@ -679,6 +717,21 @@
                 const toCurrency = document.getElementById('toCurrency').value;
                 const contractAddress = document.getElementById('contractAddress').textContent;
 
+                // Validate contract address
+                if (contractAddress === 'Not deployed') {
+                    throw new Error('Please deploy a contract first before signing trades. Go to the Dashboard tab and click "Deploy Contract".');
+                }
+
+                // Validate required fields
+                if (!senderAddress || !receiverAddress || !fromAmount || !fromCurrency || !toAmount || !toCurrency) {
+                    throw new Error('Please fill in all required fields: sender address, receiver address, amounts, and currencies.');
+                }
+
+                // Validate amounts are positive numbers
+                if (parseFloat(fromAmount) <= 0 || parseFloat(toAmount) <= 0) {
+                    throw new Error('Trade amounts must be positive numbers.');
+                }
+
                 document.getElementById('signResult').innerHTML = `
                     <h3>Preparing Trade Data...</h3>
                     <p>Preparing EIP-712 data for MetaMask signing...</p>
@@ -686,10 +739,11 @@
                 document.getElementById('signResult').className = 'result loading';
                 showElement('signResult');
 
+                const networkConfig = getNetworkConfig();
                 const domain = {
                     name: 'PiFX',
                     version: '1',
-                    chainId: 31337,
+                    chainId: networkConfig.chainId, // Dynamic based on wallet provider
                     verifyingContract: contractAddress
                 };
 
@@ -767,7 +821,7 @@
                     <ul>
                         <li>Ensure MetaMask is connected</li>
                         <li>Check if you approved the signature request</li>
-                        <li>Verify you're on the correct network (Hardhat Local)</li>
+                        <li>Verify you're on the correct network (check wallet provider setting)</li>
                         <li>Make sure all required fields are filled</li>
                         <li>Ensure the contract address is valid and deployed</li>
                         <li>Verify amounts are positive numbers</li>
@@ -790,6 +844,21 @@
                 const toCurrency = document.getElementById('toCurrency').value;
                 const contractAddress = document.getElementById('contractAddress').textContent;
 
+                // Validate contract address
+                if (contractAddress === 'Not deployed') {
+                    throw new Error('Please deploy a contract first before signing trades. Go to the Dashboard tab and click "Deploy Contract".');
+                }
+
+                // Validate required fields
+                if (!senderAddress || !receiverAddress || !fromAmount || !fromCurrency || !toAmount || !toCurrency) {
+                    throw new Error('Please fill in all required fields: sender address, receiver address, amounts, and currencies.');
+                }
+
+                // Validate amounts are positive numbers
+                if (parseFloat(fromAmount) <= 0 || parseFloat(toAmount) <= 0) {
+                    throw new Error('Trade amounts must be positive numbers.');
+                }
+
                 document.getElementById('signResult').innerHTML = `
                     <h3>Preparing Trade Data...</h3>
                     <p>Sending request to backend to sign using Circle wallet...</p>
@@ -797,6 +866,7 @@
                 document.getElementById('signResult').className = 'result loading';
                 showElement('signResult');
 
+                const networkConfig = getNetworkConfig();
                 const tradeData = {
                     senderAddress,
                     receiverAddress,
@@ -804,7 +874,8 @@
                     fromCurrency,
                     toAmount,
                     toCurrency,
-                    contractAddress
+                    contractAddress,
+                    networkConfig
                 };
 
                 const response = await fetch('/circle/sign-typed-data', {
@@ -853,10 +924,10 @@
         }
 
         async function broadcastTrade() {
-            if (getWalletProvider() === 'metamask') {
-                return broadcastTradeWithMetamask();
-            } else if (getWalletProvider() === 'circle') {
+            if (isCircleWallet()) {
                 return broadcastTradeWithCircle();
+            } else {
+                return broadcastTradeWithMetamask();
             }
         }
 
@@ -993,20 +1064,19 @@
                         contractAddress
                     })
                 });
-                console.log("broadacst FE response", response);
 
                 const result = await response.json();
-                const data = result.transactionData;
-                const txHash = result.txHash; // TODO: this is the correct txHash, just an id returned from backend
+                
+                if (!response.ok || !result.success) {
+                    throw new Error(result.error || 'Circle transaction failed');
+                }
 
-                const transactionParameters = {
-                    to: contractAddress,
-                    from: senderAddress,
-                    data: data,
-                    value: '0x0'  // No ETH sent - just recording the trade. MetaMask requires value to be provided.
-                };
+                const txHash = result.txHash;
+                const transactionId = result.transactionId;
+                const blockHeight = result.blockHeight;
+                const state = result.state;
 
-                try {                    
+                try {
                     // Broadcast the complete trade object
                     const tradeObject = {
                         fromAmount: parseFloat(fromAmount),
@@ -1016,21 +1086,51 @@
                         senderAddress: senderAddress,
                         receiverAddress: receiverAddress,
                         transactionHash: txHash,
+                        transactionId: transactionId,
                         timestamp: new Date().toISOString(),
-                        status: 'recorded'
+                        status: 'recorded',
+                        blockHeight: blockHeight,
+                        network: 'Circle-Sepolia'
                     };
 
                     // Add to recent activity with the complete trade details
-                    addToRecentActivity('Trade Recorded', `${fromAmount} ${fromCurrency} to ${toAmount} ${toCurrency} trade recorded: ${txHash}`, 'success');
+                    addToRecentActivity('Trade Recorded (Circle)', `${fromAmount} ${fromCurrency} to ${toAmount} ${toCurrency} trade recorded: ${txHash}`, 'success');
 
                     document.getElementById('broadcastResult').innerHTML = `
-                        <h3>Trade Recorded Successfully</h3>
-                        <p><strong>Transaction Hash:</strong> ${txHash}</p>
-                        <p><strong>Trade Details:</strong> ${fromAmount} ${fromCurrency} from ${senderAddress} to ${toAmount} ${toCurrency} for ${receiverAddress}</p>
-                        <p><strong>Broadcasted Trade Object:</strong></p>
-                        <pre>${JSON.stringify(tradeObject, null, 2)}</pre>
-                        <p><strong>Message:</strong> Trade recorded successfully and trade object broadcasted</p>
-                        <p><strong>Next Steps:</strong> Both parties need to fund the trade using the fund trade function. The trade will execute automatically once both parties have funded.</p>
+                        <h3>✅ Trade Recorded Successfully via Circle</h3>
+                        <div class="trade-result-details">
+                            <div class="detail-section">
+                                <h4>🔗 Transaction Information</h4>
+                                <p><strong>Transaction Hash:</strong> <span class="hash-text" onclick="copyToClipboard('${txHash}')" title="Click to copy">${txHash}</span></p>
+                                <p><strong>Transaction ID:</strong> ${transactionId}</p>
+                                <p><strong>Block Height:</strong> ${blockHeight}</p>
+                                <p><strong>State:</strong> ${state}</p>
+                                <p><strong>Network:</strong> Circle Sepolia Testnet</p>
+                            </div>
+                            
+                            <div class="detail-section">
+                                <h4>📋 Trade Details</h4>
+                                <p><strong>Trade:</strong> ${fromAmount} ${fromCurrency} → ${toAmount} ${toCurrency}</p>
+                                <p><strong>From:</strong> ${senderAddress}</p>
+                                <p><strong>To:</strong> ${receiverAddress}</p>
+                            </div>
+                            
+                            <div class="detail-section">
+                                <h4>📦 Trade Object</h4>
+                                <pre>${JSON.stringify(tradeObject, null, 2)}</pre>
+                            </div>
+                            
+                            <div class="detail-section next-steps">
+                                <h4>🚀 Next Steps</h4>
+                                <p><strong>Important:</strong> Copy the transaction hash above and use it in the "Fund Trade" tab.</p>
+                                <ol>
+                                    <li>Go to the <strong>"Fund Trade"</strong> tab</li>
+                                    <li>Paste the transaction hash: <code>${txHash}</code></li>
+                                    <li>Both parties need to fund their respective amounts</li>
+                                    <li>The trade will execute automatically once both parties have funded</li>
+                                </ol>
+                            </div>
+                        </div>
                     `;
                     document.getElementById('broadcastResult').className = 'result success';
                     showElement('broadcastResult');
@@ -1065,15 +1165,18 @@
                 document.getElementById('deployResult').className = 'result loading';
                 showElement('deployResult');
 
-                const isCircle = getWalletProvider() === 'circle';
-                const endpoint = isCircle ? '/circle/deploy-contract' : '/ethereum/deploy-contract';
+                const useCircle = isCircleWallet();
+                const endpoint = useCircle ? '/circle/deploy-contract' : '/ethereum/deploy-contract';
 
+                const networkConfig = getNetworkConfig();
+                const requestBody = useCircle ? { networkConfig } : {};
+                
                 const response = await fetch(endpoint, {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json'
                     },
-                    body: JSON.stringify({})
+                    body: JSON.stringify(requestBody)
                 });
 
                 const result = await response.json();
@@ -1121,9 +1224,10 @@
                     <pre>${error.stack || 'No stack trace available'}</pre>
                     <p><strong>Troubleshooting:</strong></p>
                     <ul>
-                        <li>Ensure Hardhat node is running on localhost:8545</li>
+                        <li>Ensure you're using the correct wallet provider and network</li>
                         <li>Check if contract is compiled (run "npx hardhat compile")</li>
-                        <li>Verify network connection</li>
+                        <li>For MetaMask: Verify Hardhat node is running on localhost:8545</li>
+                        <li>For Circle: Verify Circle API credentials and network connectivity</li>
                     </ul>
                 `;
                 document.getElementById('deployResult').className = 'result error';
@@ -1269,10 +1373,10 @@
         async function checkNetwork() {
             try {
                 const chainId = await window.ethereum.request({ method: 'eth_chainId' });
-                const hardhatChainIds = ['0x7a69', '0x539']; // Hardhat local network IDs
+                const networkConfig = getNetworkConfig();
                 
-                if (!hardhatChainIds.includes(chainId)) {
-                    showNotification('Please switch to Hardhat local network (Chain ID: 31337)', 'warning');
+                if (chainId !== networkConfig.chainIdHex) {
+                    showNotification(`Please switch to ${networkConfig.networkName} (Chain ID: ${networkConfig.chainId})`, 'warning');
                     return false;
                 }
                 return true;
@@ -1282,34 +1386,42 @@
             }
         }
 
-        async function switchToHardhat() {
+        async function switchToCorrectNetwork() {
+            const networkConfig = getNetworkConfig();
+            
             try {
                 await window.ethereum.request({
                     method: 'wallet_switchEthereumChain',
-                    params: [{ chainId: '0x7a69' }], // Hardhat local network
+                    params: [{ chainId: networkConfig.chainIdHex }],
                 });
-                showNotification('Switched to Hardhat local network', 'success');
+                showNotification(`Switched to ${networkConfig.networkName}`, 'success');
             } catch (switchError) {
                 // This error code indicates that the chain has not been added to MetaMask
                 if (switchError.code === 4902) {
                     try {
+                        const addChainParams = {
+                            chainId: networkConfig.chainIdHex,
+                            chainName: networkConfig.networkName,
+                            nativeCurrency: {
+                                name: 'ETH',
+                                symbol: 'ETH',
+                                decimals: 18
+                            },
+                            rpcUrls: [networkConfig.rpcUrl]
+                        };
+                        
+                        // Add block explorer if available
+                        if (networkConfig.blockExplorer) {
+                            addChainParams.blockExplorerUrls = [networkConfig.blockExplorer];
+                        }
+                        
                         await window.ethereum.request({
                             method: 'wallet_addEthereumChain',
-                            params: [{
-                                chainId: '0x7a69',
-                                chainName: 'Hardhat Local',
-                                nativeCurrency: {
-                                    name: 'ETH',
-                                    symbol: 'ETH',
-                                    decimals: 18
-                                },
-                                rpcUrls: ['http://127.0.0.1:8545'],
-                                blockExplorerUrls: []
-                            }]
+                            params: [addChainParams]
                         });
-                        showNotification('Added Hardhat local network to MetaMask', 'success');
+                        showNotification(`Added ${networkConfig.networkName} to MetaMask`, 'success');
                     } catch (addError) {
-                        showNotification('Failed to add Hardhat network: ' + addError.message, 'error');
+                        showNotification(`Failed to add ${networkConfig.networkName}: ` + addError.message, 'error');
                     }
                 } else {
                     showNotification('Failed to switch network: ' + switchError.message, 'error');
@@ -1610,10 +1722,11 @@
                 showElement('provideFundsResult');
 
                 // Construct EIP-712 data locally
+                const networkConfig = getNetworkConfig();
                 const domain = {
                     name: 'PiFX',
                     version: '1',
-                    chainId: 31337,
+                    chainId: networkConfig.chainId, // Dynamic based on wallet provider
                     verifyingContract: contractAddress
                 };
 
